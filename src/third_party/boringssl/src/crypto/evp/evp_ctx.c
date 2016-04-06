@@ -56,6 +56,7 @@
 
 #include <openssl/evp.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #include <openssl/err.h>
@@ -192,6 +193,12 @@ err:
 
 EVP_PKEY *EVP_PKEY_CTX_get0_pkey(EVP_PKEY_CTX *ctx) { return ctx->pkey; }
 
+void EVP_PKEY_CTX_set_app_data(EVP_PKEY_CTX *ctx, void *data) {
+  ctx->app_data = data;
+}
+
+void *EVP_PKEY_CTX_get_app_data(EVP_PKEY_CTX *ctx) { return ctx->app_data; }
+
 int EVP_PKEY_CTX_ctrl(EVP_PKEY_CTX *ctx, int keytype, int optype, int cmd,
                       int p1, void *p2) {
   if (!ctx || !ctx->pmeth || !ctx->pmeth->ctrl) {
@@ -222,6 +229,15 @@ int EVP_PKEY_sign_init(EVP_PKEY_CTX *ctx) {
   }
 
   ctx->operation = EVP_PKEY_OP_SIGN;
+  if (!ctx->pmeth->sign_init) {
+    return 1;
+  }
+
+  if (!ctx->pmeth->sign_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
+
   return 1;
 }
 
@@ -244,6 +260,14 @@ int EVP_PKEY_verify_init(EVP_PKEY_CTX *ctx) {
     return 0;
   }
   ctx->operation = EVP_PKEY_OP_VERIFY;
+  if (!ctx->pmeth->verify_init) {
+    return 1;
+  }
+  if (!ctx->pmeth->verify_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
+
   return 1;
 }
 
@@ -266,6 +290,13 @@ int EVP_PKEY_encrypt_init(EVP_PKEY_CTX *ctx) {
     return 0;
   }
   ctx->operation = EVP_PKEY_OP_ENCRYPT;
+  if (!ctx->pmeth->encrypt_init) {
+    return 1;
+  }
+  if (!ctx->pmeth->encrypt_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
   return 1;
 }
 
@@ -288,6 +319,13 @@ int EVP_PKEY_decrypt_init(EVP_PKEY_CTX *ctx) {
     return 0;
   }
   ctx->operation = EVP_PKEY_OP_DECRYPT;
+  if (!ctx->pmeth->decrypt_init) {
+    return 1;
+  }
+  if (!ctx->pmeth->decrypt_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
   return 1;
 }
 
@@ -304,34 +342,19 @@ int EVP_PKEY_decrypt(EVP_PKEY_CTX *ctx, uint8_t *out, size_t *outlen,
   return ctx->pmeth->decrypt(ctx, out, outlen, in, inlen);
 }
 
-int EVP_PKEY_verify_recover_init(EVP_PKEY_CTX *ctx) {
-  if (!ctx || !ctx->pmeth || !ctx->pmeth->verify_recover) {
-    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-    return 0;
-  }
-  ctx->operation = EVP_PKEY_OP_VERIFYRECOVER;
-  return 1;
-}
-
-int EVP_PKEY_verify_recover(EVP_PKEY_CTX *ctx, uint8_t *out, size_t *out_len,
-                            const uint8_t *sig, size_t sig_len) {
-  if (!ctx || !ctx->pmeth || !ctx->pmeth->verify_recover) {
-    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-    return 0;
-  }
-  if (ctx->operation != EVP_PKEY_OP_VERIFYRECOVER) {
-    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATON_NOT_INITIALIZED);
-    return 0;
-  }
-  return ctx->pmeth->verify_recover(ctx, out, out_len, sig, sig_len);
-}
-
 int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx) {
   if (!ctx || !ctx->pmeth || !ctx->pmeth->derive) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
   ctx->operation = EVP_PKEY_OP_DERIVE;
+  if (!ctx->pmeth->derive_init) {
+    return 1;
+  }
+  if (!ctx->pmeth->derive_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
   return 1;
 }
 
@@ -413,6 +436,13 @@ int EVP_PKEY_keygen_init(EVP_PKEY_CTX *ctx) {
     return 0;
   }
   ctx->operation = EVP_PKEY_OP_KEYGEN;
+  if (!ctx->pmeth->keygen_init) {
+    return 1;
+  }
+  if (!ctx->pmeth->keygen_init(ctx)) {
+    ctx->operation = EVP_PKEY_OP_UNDEFINED;
+    return 0;
+  }
   return 1;
 }
 

@@ -1,7 +1,6 @@
 /* pem_x509.c */
-/*
- * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL project
- * 2001.
+/* Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
+ * project 2001.
  */
 /* ====================================================================
  * Copyright (c) 2001 The OpenSSL Project.  All rights reserved.
@@ -61,5 +60,6 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
+
 
 IMPLEMENT_PEM_rw(X509, X509, PEM_STRING_X509, X509)

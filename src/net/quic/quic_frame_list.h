@@ -6,12 +6,13 @@
 #define NET_QUIC_QUIC_FRAME_LIST_H_
 
 #include <stddef.h>
-#include <list>
-#include <string>
 
-#include "base/strings/string_piece.h"
 #include "net/quic/quic_protocol.h"
 #include "net/quic/quic_stream_sequencer_buffer_interface.h"
+
+using base::StringPiece;
+using std::string;
+using std::list;
 
 namespace net {
 
@@ -25,15 +26,15 @@ class NET_EXPORT_PRIVATE QuicFrameList
   // A contiguous segment received by a QUIC stream.
   struct FrameData {
     FrameData(QuicStreamOffset offset,
-              std::string segment,
+              string segment,
               const QuicTime timestamp);
 
     const QuicStreamOffset offset;
-    std::string segment;
+    string segment;
     const QuicTime timestamp;
   };
 
-  QuicFrameList();
+  explicit QuicFrameList();
 
   ~QuicFrameList() override;
 
@@ -41,7 +42,7 @@ class NET_EXPORT_PRIVATE QuicFrameList
   void Clear() override;
   bool Empty() const override;
   QuicErrorCode OnStreamData(QuicStreamOffset offset,
-                             base::StringPiece data,
+                             StringPiece data,
                              QuicTime timestamp,
                              size_t* bytes_buffered) override;
   size_t Readv(const struct iovec* iov, size_t iov_len) override;
@@ -56,19 +57,19 @@ class NET_EXPORT_PRIVATE QuicFrameList
  private:
   friend class test::QuicStreamSequencerPeer;
 
-  std::list<FrameData>::iterator FindInsertionPoint(QuicStreamOffset offset,
-                                                    size_t len);
+  list<FrameData>::iterator FindInsertionPoint(QuicStreamOffset offset,
+                                               size_t len);
 
   bool FrameOverlapsBufferedData(
       QuicStreamOffset offset,
       size_t data_len,
-      std::list<FrameData>::const_iterator insertion_point) const;
+      list<FrameData>::const_iterator insertion_point) const;
 
   bool IsDuplicate(QuicStreamOffset offset,
                    size_t data_len,
-                   std::list<FrameData>::const_iterator insertion_point) const;
+                   list<FrameData>::const_iterator insertion_point) const;
 
-  std::list<FrameData> frame_list_;
+  list<FrameData> frame_list_;
 
   // Number of bytes in buffer.
   size_t num_bytes_buffered_ = 0;

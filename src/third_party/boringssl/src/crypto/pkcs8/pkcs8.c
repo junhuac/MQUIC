@@ -62,7 +62,6 @@
 #include <openssl/asn1.h>
 #include <openssl/bn.h>
 #include <openssl/buf.h>
-#include <openssl/bytestring.h>
 #include <openssl/cipher.h>
 #include <openssl/digest.h>
 #include <openssl/err.h>
@@ -72,6 +71,7 @@
 
 #include "internal.h"
 #include "../bytestring/internal.h"
+#include "../evp/internal.h"
 
 
 #define PKCS12_KEY_ID 1
@@ -591,52 +591,72 @@ err:
 }
 
 EVP_PKEY *EVP_PKCS82PKEY(PKCS8_PRIV_KEY_INFO *p8) {
-  uint8_t *der = NULL;
-  int der_len = i2d_PKCS8_PRIV_KEY_INFO(p8, &der);
-  if (der_len < 0) {
+  EVP_PKEY *pkey = NULL;
+  ASN1_OBJECT *algoid;
+  char obj_tmp[80];
+
+  if (!PKCS8_pkey_get0(&algoid, NULL, NULL, NULL, p8)) {
     return NULL;
   }
 
-  CBS cbs;
-  CBS_init(&cbs, der, (size_t)der_len);
-  EVP_PKEY *ret = EVP_parse_private_key(&cbs);
-  if (ret == NULL || CBS_len(&cbs) != 0) {
-    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_DECODE_ERROR);
-    EVP_PKEY_free(ret);
-    OPENSSL_free(der);
+  pkey = EVP_PKEY_new();
+  if (pkey == NULL) {
+    OPENSSL_PUT_ERROR(PKCS8, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
 
-  OPENSSL_free(der);
-  return ret;
+  if (!EVP_PKEY_set_type(pkey, OBJ_obj2nid(algoid))) {
+    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_UNSUPPORTED_PRIVATE_KEY_ALGORITHM);
+    i2t_ASN1_OBJECT(obj_tmp, 80, algoid);
+    ERR_add_error_data(2, "TYPE=", obj_tmp);
+    goto error;
+  }
+
+  if (pkey->ameth->priv_decode) {
+    if (!pkey->ameth->priv_decode(pkey, p8)) {
+      OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_PRIVATE_KEY_DECODE_ERROR);
+      goto error;
+    }
+  } else {
+    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_METHOD_NOT_SUPPORTED);
+    goto error;
+  }
+
+  return pkey;
+
+error:
+  EVP_PKEY_free(pkey);
+  return NULL;
 }
 
 PKCS8_PRIV_KEY_INFO *EVP_PKEY2PKCS8(EVP_PKEY *pkey) {
-  CBB cbb;
-  uint8_t *der = NULL;
-  size_t der_len;
-  if (!CBB_init(&cbb, 0) ||
-      !EVP_marshal_private_key(&cbb, pkey) ||
-      !CBB_finish(&cbb, &der, &der_len) ||
-      der_len > LONG_MAX) {
-    CBB_cleanup(&cbb);
-    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_ENCODE_ERROR);
-    goto err;
-  }
+  PKCS8_PRIV_KEY_INFO *p8;
 
-  const uint8_t *p = der;
-  PKCS8_PRIV_KEY_INFO *p8 = d2i_PKCS8_PRIV_KEY_INFO(NULL, &p, (long)der_len);
-  if (p8 == NULL || p != der + der_len) {
-    PKCS8_PRIV_KEY_INFO_free(p8);
-    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_DECODE_ERROR);
-    goto err;
+  p8 = PKCS8_PRIV_KEY_INFO_new();
+  if (p8 == NULL) {
+    OPENSSL_PUT_ERROR(PKCS8, ERR_R_MALLOC_FAILURE);
+    return NULL;
   }
+  p8->broken = PKCS8_OK;
 
-  OPENSSL_free(der);
+  if (pkey->ameth) {
+    if (pkey->ameth->priv_encode) {
+      if (!pkey->ameth->priv_encode(p8, pkey)) {
+        OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_PRIVATE_KEY_ENCODE_ERROR);
+        goto error;
+      }
+    } else {
+      OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_METHOD_NOT_SUPPORTED);
+      goto error;
+    }
+  } else {
+    OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_UNSUPPORTED_PRIVATE_KEY_ALGORITHM);
+    goto error;
+  }
   return p8;
 
-err:
-  OPENSSL_free(der);
+error:
+  PKCS8_PRIV_KEY_INFO_free(p8);
   return NULL;
 }
 
@@ -717,7 +737,6 @@ static int PKCS12_handle_content_info(CBS *content_info, unsigned depth,
                                       struct pkcs12_context *ctx) {
   CBS content_type, wrapped_contents, contents, content_infos;
   int nid, ret = 0;
-  uint8_t *storage = NULL;
 
   if (!CBS_get_asn1(content_info, &content_type, CBS_ASN1_OBJECT) ||
       !CBS_get_asn1(content_info, &wrapped_contents,
@@ -748,9 +767,8 @@ static int PKCS12_handle_content_info(CBS *content_info, unsigned depth,
         /* AlgorithmIdentifier, see
          * https://tools.ietf.org/html/rfc5280#section-4.1.1.2 */
         !CBS_get_asn1_element(&eci, &ai, CBS_ASN1_SEQUENCE) ||
-        !CBS_get_asn1_implicit_string(
-            &eci, &encrypted_contents, &storage,
-            CBS_ASN1_CONTEXT_SPECIFIC | 0, CBS_ASN1_OCTETSTRING)) {
+        !CBS_get_asn1(&eci, &encrypted_contents,
+                      CBS_ASN1_CONTEXT_SPECIFIC | 0)) {
       OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_BAD_PKCS12_DATA);
       goto err;
     }
@@ -877,7 +895,6 @@ static int PKCS12_handle_content_info(CBS *content_info, unsigned depth,
   }
 
 err:
-  OPENSSL_free(storage);
   return ret;
 }
 
@@ -958,7 +975,7 @@ int PKCS12_get_key_and_certs(EVP_PKEY **out_key, STACK_OF(X509) *out_certs,
 
   ctx.out_key = out_key;
   ctx.out_certs = out_certs;
-  if (!ascii_to_ucs2(password, password ? strlen(password) : 0, &ctx.password,
+  if (!ascii_to_ucs2(password, strlen(password), &ctx.password,
                      &ctx.password_len)) {
     OPENSSL_PUT_ERROR(PKCS8, PKCS8_R_DECODE_ERROR);
     goto err;
@@ -1049,6 +1066,9 @@ struct pkcs12_st {
 PKCS12* d2i_PKCS12(PKCS12 **out_p12, const uint8_t **ber_bytes, size_t ber_len) {
   PKCS12 *p12;
 
+  /* out_p12 must be NULL because we don't export the PKCS12 structure. */
+  assert(out_p12 == NULL);
+
   p12 = OPENSSL_malloc(sizeof(PKCS12));
   if (!p12) {
     return NULL;
@@ -1063,12 +1083,6 @@ PKCS12* d2i_PKCS12(PKCS12 **out_p12, const uint8_t **ber_bytes, size_t ber_len) 
   memcpy(p12->ber_bytes, *ber_bytes, ber_len);
   p12->ber_len = ber_len;
   *ber_bytes += ber_len;
-
-  if (out_p12) {
-    PKCS12_free(*out_p12);
-
-    *out_p12 = p12;
-  }
 
   return p12;
 }
@@ -1091,12 +1105,7 @@ PKCS12* d2i_PKCS12_bio(BIO *bio, PKCS12 **out_p12) {
   for (;;) {
     int n = BIO_read(bio, &buf->data[used], buf->length - used);
     if (n < 0) {
-      if (used == 0) {
-        goto out;
-      }
-      /* Workaround a bug in node.js. It uses a memory BIO for this in the wrong
-       * mode. */
-      n = 0;
+      goto out;
     }
 
     if (n == 0) {
@@ -1203,9 +1212,6 @@ int PKCS12_verify_mac(const PKCS12 *p12, const char *password,
 }
 
 void PKCS12_free(PKCS12 *p12) {
-  if (p12 == NULL) {
-    return;
-  }
   OPENSSL_free(p12->ber_bytes);
   OPENSSL_free(p12);
 }

@@ -74,14 +74,13 @@ void QuicFlowController::AddBytesSent(QuicByteCount bytes_sent) {
     bytes_sent_ = send_window_offset_;
 
     // This is an error on our side, close the connection as soon as possible.
-    connection_->CloseConnection(
+    connection_->SendConnectionCloseWithDetails(
         QUIC_FLOW_CONTROL_SENT_TOO_MUCH_DATA,
         base::StringPrintf(
             "%llu bytes over send window offset",
             static_cast<unsigned long long>(send_window_offset_ -
                                             (bytes_sent_ + bytes_sent)))
-            .c_str(),
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+            .c_str());
     return;
   }
 

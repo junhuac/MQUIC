@@ -29,7 +29,7 @@ class BASE_EXPORT ThreadTaskRunnerHandle {
   // Binds |task_runner| to the current thread. |task_runner| must belong
   // to the current thread for this to succeed.
   explicit ThreadTaskRunnerHandle(
-      scoped_refptr<SingleThreadTaskRunner> task_runner);
+      const scoped_refptr<SingleThreadTaskRunner>& task_runner);
   ~ThreadTaskRunnerHandle();
 
  private:

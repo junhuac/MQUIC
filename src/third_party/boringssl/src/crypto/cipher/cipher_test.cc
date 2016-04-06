@@ -109,7 +109,7 @@ static const EVP_CIPHER *GetCipher(const std::string &name) {
 static bool TestOperation(FileTest *t,
                           const EVP_CIPHER *cipher,
                           bool encrypt,
-                          size_t chunk_size,
+                          bool streaming,
                           const std::vector<uint8_t> &key,
                           const std::vector<uint8_t> &iv,
                           const std::vector<uint8_t> &plaintext,
@@ -138,7 +138,7 @@ static bool TestOperation(FileTest *t,
                                iv.size(), 0)) {
         return false;
       }
-    } else if (iv.size() != EVP_CIPHER_CTX_iv_length(ctx.get())) {
+    } else if (iv.size() != (size_t)EVP_CIPHER_CTX_iv_length(ctx.get())) {
       t->PrintLine("Bad IV length.");
       return false;
     }
@@ -170,21 +170,16 @@ static bool TestOperation(FileTest *t,
     t->PrintLine("Operation failed.");
     return false;
   }
-  if (chunk_size != 0) {
-    for (size_t i = 0; i < in->size();) {
-      size_t todo = chunk_size;
-      if (i + todo > in->size()) {
-        todo = in->size() - i;
-      }
-
+  if (streaming) {
+    for (size_t i = 0; i < in->size(); i++) {
+      uint8_t c = (*in)[i];
       int len;
-      if (!EVP_CipherUpdate(ctx.get(), result.data() + result_len1, &len,
-                            in->data() + i, todo)) {
+      if (!EVP_CipherUpdate(ctx.get(), result.data() + result_len1, &len, &c,
+                            1)) {
         t->PrintLine("Operation failed.");
         return false;
       }
       result_len1 += len;
-      i += todo;
     }
   } else if (!in->empty() &&
              !EVP_CipherUpdate(ctx.get(), result.data(), &result_len1,
@@ -263,20 +258,20 @@ static bool TestCipher(FileTest *t, void *arg) {
     }
   }
 
-  const std::vector<size_t> chunk_sizes = {0,  1,  2,  5,  7,  8,  9,  15, 16,
-                                           17, 31, 32, 33, 63, 64, 65, 512};
-
-  for (size_t chunk_size : chunk_sizes) {
-    // By default, both directions are run, unless overridden by the operation.
-    if (operation != kDecrypt &&
-        !TestOperation(t, cipher, true /* encrypt */, chunk_size, key, iv,
-                       plaintext, ciphertext, aad, tag)) {
+  // By default, both directions are run, unless overridden by the operation.
+  if (operation != kDecrypt) {
+    if (!TestOperation(t, cipher, true /* encrypt */, false /* single-shot */,
+                       key, iv, plaintext, ciphertext, aad, tag) ||
+        !TestOperation(t, cipher, true /* encrypt */, true /* streaming */, key,
+                       iv, plaintext, ciphertext, aad, tag)) {
       return false;
     }
-
-    if (operation != kEncrypt &&
-        !TestOperation(t, cipher, false /* decrypt */, chunk_size, key, iv,
-                       plaintext, ciphertext, aad, tag)) {
+  }
+  if (operation != kEncrypt) {
+    if (!TestOperation(t, cipher, false /* decrypt */, false /* single-shot */,
+                       key, iv, plaintext, ciphertext, aad, tag) ||
+        !TestOperation(t, cipher, false /* decrypt */, true /* streaming */,
+                       key, iv, plaintext, ciphertext, aad, tag)) {
       return false;
     }
   }

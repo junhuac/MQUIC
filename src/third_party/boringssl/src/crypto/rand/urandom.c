@@ -14,7 +14,7 @@
 
 #include <openssl/rand.h>
 
-#if !defined(OPENSSL_WINDOWS) && !defined(BORINGSSL_UNSAFE_FUZZER_MODE)
+#if !defined(OPENSSL_WINDOWS)
 
 #include <assert.h>
 #include <errno.h>
@@ -83,15 +83,11 @@ static void init_once(void) {
 
   int flags = fcntl(fd, F_GETFD);
   if (flags == -1) {
-    /* Native Client doesn't implement |fcntl|. */
-    if (errno != ENOSYS) {
-      abort();
-    }
-  } else {
-    flags |= FD_CLOEXEC;
-    if (fcntl(fd, F_SETFD, flags) == -1) {
-      abort();
-    }
+    abort();
+  }
+  flags |= FD_CLOEXEC;
+  if (fcntl(fd, F_SETFD, flags) == -1) {
+    abort();
   }
   urandom_fd = fd;
 }
@@ -220,4 +216,4 @@ void CRYPTO_sysrand(uint8_t *out, size_t requested) {
   }
 }
 
-#endif  /* !OPENSSL_WINDOWS && !BORINGSSL_UNSAFE_FUZZER_MODE */
+#endif  /* !OPENSSL_WINDOWS */

@@ -39,10 +39,9 @@ OS_ARCH_COMBOS = [
 # perlasm system.
 NON_PERL_FILES = {
     ('linux', 'arm'): [
-        'src/crypto/curve25519/asm/x25519-asm-arm.S',
-    ],
-    ('linux', 'x86_64'): [
-        'src/crypto/curve25519/asm/x25519-asm-x86_64.S',
+        'src/crypto/poly1305/poly1305_arm_asm.S',
+        'src/crypto/chacha/chacha_vec_arm.S',
+        'src/crypto/cpu-arm-asm.S',
     ],
 }
 
@@ -150,8 +149,8 @@ class Android(object):
     with open('sources.mk', 'w+') as makefile:
       makefile.write(self.header)
 
-      crypto_files = files['crypto'] + self.ExtraFiles()
-      self.PrintVariableSection(makefile, 'crypto_sources', crypto_files)
+      files['crypto'].extend(self.ExtraFiles())
+      self.PrintVariableSection(makefile, 'crypto_sources', files['crypto'])
       self.PrintVariableSection(makefile, 'ssl_sources', files['ssl'])
       self.PrintVariableSection(makefile, 'tool_sources', files['tool'])
 
@@ -489,8 +488,6 @@ def main(platforms):
 
   with open('src/util/all_tests.json', 'r') as f:
     tests = json.load(f)
-  # Skip tests for libdecrepit. Consumers import that manually.
-  tests = [test for test in tests if not test[0].startswith("decrepit/")]
   test_binaries = set([test[0] for test in tests])
   test_sources = set([
       test.replace('.cc', '').replace('.c', '').replace(

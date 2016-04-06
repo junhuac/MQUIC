@@ -83,12 +83,6 @@ OPENSSL_EXPORT void RC4(RC4_KEY *key, size_t len, const uint8_t *in,
                         uint8_t *out);
 
 
-/* Deprecated functions. */
-
-/* RC4_options returns the string "rc4(ptr,int)". */
-OPENSSL_EXPORT const char *RC4_options(void);
-
-
 #if defined(__cplusplus)
 }  /* extern C */
 #endif

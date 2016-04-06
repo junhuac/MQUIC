@@ -9,7 +9,6 @@
 
 using net::SpdyHeaderBlock;
 using net::kPushPromiseTimeoutSecs;
-using std::string;
 
 namespace net {
 
@@ -24,9 +23,10 @@ QuicClientPromisedInfo::QuicClientPromisedInfo(QuicClientSessionBase* session,
 
 QuicClientPromisedInfo::~QuicClientPromisedInfo() {}
 
-void QuicClientPromisedInfo::CleanupAlarm::OnAlarm() {
+QuicTime QuicClientPromisedInfo::CleanupAlarm::OnAlarm() {
   DVLOG(1) << "self GC alarm for stream " << promised_->id_;
   promised_->Reset(QUIC_STREAM_CANCELLED);
+  return QuicTime::Zero();
 }
 
 void QuicClientPromisedInfo::Init() {

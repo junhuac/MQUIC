@@ -174,9 +174,13 @@ bool DoIDNHost(const base::char16* src, int src_len, CanonOutput* output) {
   DoSimpleHost(src, src_len, &url_escaped_host, &has_non_ascii);
 
   StackBufferW wide_output;
+#if 0
   if (!IDNToASCII(url_escaped_host.data(),
                   url_escaped_host.length(),
                   &wide_output)) {
+#else
+  if (true) {
+#endif
     // Some error, give up. This will write some reasonable looking
     // representation of the string to the output.
     AppendInvalidNarrowString(src, 0, src_len, output);

@@ -58,6 +58,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #if !defined(OPENSSL_WINDOWS)
@@ -540,8 +541,4 @@ int BIO_set_conn_port(BIO *bio, const char *port_str) {
 
 int BIO_set_nbio(BIO *bio, int on) {
   return BIO_ctrl(bio, BIO_C_SET_NBIO, on, NULL);
-}
-
-int BIO_do_connect(BIO *bio) {
-  return BIO_ctrl(bio, BIO_C_DO_STATE_MACHINE, 0, NULL);
 }

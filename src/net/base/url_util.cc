@@ -16,8 +16,10 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "net/base/escape.h"
-#include "net/base/ip_address.h"
+#include "net/base/ip_address_number.h"
+#if 0
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+#endif
 #include "url/gurl.h"
 #include "url/url_canon.h"
 #include "url/url_canon_ip.h"
@@ -124,9 +126,10 @@ const std::string& QueryIterator::GetUnescapedValue() {
   DCHECK(!at_end_);
   if (value_.is_nonempty() && unescaped_value_.empty()) {
     unescaped_value_ = UnescapeURLComponent(
-        GetValue(), UnescapeRule::SPACES | UnescapeRule::PATH_SEPARATORS |
-                        UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS |
-                        UnescapeRule::REPLACE_PLUS_WITH_SPACE);
+        GetValue(),
+        UnescapeRule::SPACES |
+        UnescapeRule::URL_SPECIAL_CHARS |
+        UnescapeRule::REPLACE_PLUS_WITH_SPACE);
   }
   return unescaped_value_;
 }
@@ -304,6 +307,7 @@ bool IsCanonicalizedHostCompliant(const std::string& host) {
   return most_recent_component_started_alphanumeric;
 }
 
+#if 0
 bool IsHostnameNonUnique(const std::string& hostname) {
   // CanonicalizeHost requires surrounding brackets to parse an IPv6 address.
   const std::string host_or_ip = hostname.find(':') != std::string::npos ?
@@ -319,15 +323,16 @@ bool IsHostnameNonUnique(const std::string& hostname) {
   // If |hostname| is an IP address, check to see if it's in an IANA-reserved
   // range.
   if (host_info.IsIPAddress()) {
-    IPAddress host_addr;
-    if (!host_addr.AssignFromIPLiteral(hostname.substr(
-            host_info.out_host.begin, host_info.out_host.len))) {
+    IPAddressNumber host_addr;
+    if (!ParseIPLiteralToNumber(hostname.substr(host_info.out_host.begin,
+                                                host_info.out_host.len),
+                                &host_addr)) {
       return false;
     }
     switch (host_info.family) {
       case url::CanonHostInfo::IPV4:
       case url::CanonHostInfo::IPV6:
-        return host_addr.IsReserved();
+        return IsIPAddressReserved(host_addr);
       case url::CanonHostInfo::NEUTRAL:
       case url::CanonHostInfo::BROKEN:
         return false;
@@ -348,22 +353,30 @@ bool IsHostnameNonUnique(const std::string& hostname) {
                   registry_controlled_domains::EXCLUDE_UNKNOWN_REGISTRIES,
                   registry_controlled_domains::EXCLUDE_PRIVATE_REGISTRIES);
 }
+#endif
 
 bool IsLocalhost(base::StringPiece host) {
   if (IsLocalHostname(host, nullptr))
     return true;
 
-  IPAddress ip_address;
-  if (ip_address.AssignFromIPLiteral(host)) {
-    size_t size = ip_address.size();
+  IPAddressNumber ip_number;
+  if (ParseIPLiteralToNumber(host, &ip_number)) {
+    size_t size = ip_number.size();
     switch (size) {
-      case IPAddress::kIPv4AddressSize: {
-        const uint8_t prefix[] = {127};
-        return IPAddressStartsWith(ip_address, prefix);
+      case kIPv4AddressSize: {
+        IPAddressNumber localhost_prefix;
+        localhost_prefix.push_back(127);
+        for (int i = 0; i < 3; ++i) {
+          localhost_prefix.push_back(0);
+        }
+        return IPNumberMatchesPrefix(ip_number, localhost_prefix, 8);
       }
 
-      case IPAddress::kIPv6AddressSize:
-        return ip_address == IPAddress::IPv6Localhost();
+      case kIPv6AddressSize: {
+        struct in6_addr sin6_addr;
+        memcpy(&sin6_addr, &ip_number[0], kIPv6AddressSize);
+        return !!IN6_IS_ADDR_LOOPBACK(&sin6_addr);
+      }
 
       default:
         NOTREACHED();
@@ -386,8 +399,7 @@ void GetIdentityFromURL(const GURL& url,
                         base::string16* username,
                         base::string16* password) {
   UnescapeRule::Type flags =
-      UnescapeRule::SPACES | UnescapeRule::PATH_SEPARATORS |
-      UnescapeRule::URL_SPECIAL_CHARS_EXCEPT_PATH_SEPARATORS;
+      UnescapeRule::SPACES | UnescapeRule::URL_SPECIAL_CHARS;
   *username = UnescapeAndDecodeUTF8URLComponent(url.username(), flags);
   *password = UnescapeAndDecodeUTF8URLComponent(url.password(), flags);
 }

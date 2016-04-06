@@ -312,11 +312,6 @@ TimeTicks TimeTicks::Now() {
 }
 
 // static
-TimeTicks::Clock TimeTicks::GetClock() {
-  return Clock::LINUX_CLOCK_MONOTONIC;
-}
-
-// static
 bool TimeTicks::IsHighResolution() {
   return true;
 }

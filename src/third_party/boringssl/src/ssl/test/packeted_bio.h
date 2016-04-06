@@ -25,7 +25,7 @@
 #include <winsock2.h>
 #pragma warning(pop)
 #else
-#include <sys/time.h>
+#include <sys/types.h>
 #endif
 
 

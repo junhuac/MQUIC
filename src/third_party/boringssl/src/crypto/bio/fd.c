@@ -72,8 +72,6 @@
 #include <openssl/err.h>
 #include <openssl/mem.h>
 
-#include "internal.h"
-
 
 static int bio_fd_non_fatal_error(int err) {
   if (

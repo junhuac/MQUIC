@@ -74,23 +74,54 @@
 #include "internal.h"
 
 
+const EC_METHOD *EC_GFp_mont_method(void) {
+  static const EC_METHOD ret = {ec_GFp_mont_group_init,
+                                ec_GFp_mont_group_finish,
+                                ec_GFp_mont_group_clear_finish,
+                                ec_GFp_mont_group_copy,
+                                ec_GFp_mont_group_set_curve,
+                                ec_GFp_simple_point_get_affine_coordinates,
+                                ec_wNAF_mul /* XXX: Not constant time. */,
+                                ec_wNAF_precompute_mult,
+                                ec_GFp_mont_field_mul,
+                                ec_GFp_mont_field_sqr,
+                                ec_GFp_mont_field_encode,
+                                ec_GFp_mont_field_decode,
+                                ec_GFp_mont_field_set_to_one};
+
+  return &ret;
+}
+
 int ec_GFp_mont_group_init(EC_GROUP *group) {
   int ok;
 
   ok = ec_GFp_simple_group_init(group);
   group->mont = NULL;
+  group->one = NULL;
   return ok;
 }
 
 void ec_GFp_mont_group_finish(EC_GROUP *group) {
   BN_MONT_CTX_free(group->mont);
   group->mont = NULL;
+  BN_free(group->one);
+  group->one = NULL;
   ec_GFp_simple_group_finish(group);
+}
+
+void ec_GFp_mont_group_clear_finish(EC_GROUP *group) {
+  BN_MONT_CTX_free(group->mont);
+  group->mont = NULL;
+  BN_clear_free(group->one);
+  group->one = NULL;
+  ec_GFp_simple_group_clear_finish(group);
 }
 
 int ec_GFp_mont_group_copy(EC_GROUP *dest, const EC_GROUP *src) {
   BN_MONT_CTX_free(dest->mont);
   dest->mont = NULL;
+  BN_clear_free(dest->one);
+  dest->one = NULL;
 
   if (!ec_GFp_simple_group_copy(dest, src)) {
     return 0;
@@ -102,6 +133,12 @@ int ec_GFp_mont_group_copy(EC_GROUP *dest, const EC_GROUP *src) {
       return 0;
     }
     if (!BN_MONT_CTX_copy(dest->mont, src->mont)) {
+      goto err;
+    }
+  }
+  if (src->one != NULL) {
+    dest->one = BN_dup(src->one);
+    if (dest->one == NULL) {
       goto err;
     }
   }
@@ -118,10 +155,13 @@ int ec_GFp_mont_group_set_curve(EC_GROUP *group, const BIGNUM *p,
                                 const BIGNUM *a, const BIGNUM *b, BN_CTX *ctx) {
   BN_CTX *new_ctx = NULL;
   BN_MONT_CTX *mont = NULL;
+  BIGNUM *one = NULL;
   int ret = 0;
 
   BN_MONT_CTX_free(group->mont);
   group->mont = NULL;
+  BN_free(group->one);
+  group->one = NULL;
 
   if (ctx == NULL) {
     ctx = new_ctx = BN_CTX_new();
@@ -138,20 +178,29 @@ int ec_GFp_mont_group_set_curve(EC_GROUP *group, const BIGNUM *p,
     OPENSSL_PUT_ERROR(EC, ERR_R_BN_LIB);
     goto err;
   }
+  one = BN_new();
+  if (one == NULL || !BN_to_montgomery(one, BN_value_one(), mont, ctx)) {
+    goto err;
+  }
 
   group->mont = mont;
   mont = NULL;
+  group->one = one;
+  one = NULL;
 
   ret = ec_GFp_simple_group_set_curve(group, p, a, b, ctx);
 
   if (!ret) {
     BN_MONT_CTX_free(group->mont);
     group->mont = NULL;
+    BN_free(group->one);
+    group->one = NULL;
   }
 
 err:
   BN_CTX_free(new_ctx);
   BN_MONT_CTX_free(mont);
+  BN_free(one);
   return ret;
 }
 
@@ -195,119 +244,15 @@ int ec_GFp_mont_field_decode(const EC_GROUP *group, BIGNUM *r, const BIGNUM *a,
   return BN_from_montgomery(r, a, group->mont, ctx);
 }
 
-static int ec_GFp_mont_check_pub_key_order(const EC_GROUP *group,
-                                           const EC_POINT* pub_key,
-                                           BN_CTX *ctx) {
-  EC_POINT *point = EC_POINT_new(group);
-  int ret = 0;
-
-  if (point == NULL ||
-      !ec_wNAF_mul(group, point, NULL, pub_key, EC_GROUP_get0_order(group),
-                   ctx) ||
-      !EC_POINT_is_at_infinity(group, point)) {
-    goto err;
-  }
-
-  ret = 1;
-
-err:
-  EC_POINT_free(point);
-  return ret;
-}
-
-static int ec_GFp_mont_point_get_affine_coordinates(const EC_GROUP *group,
-                                                    const EC_POINT *point,
-                                                    BIGNUM *x, BIGNUM *y,
-                                                    BN_CTX *ctx) {
-  BN_CTX *new_ctx = NULL;
-  BIGNUM *Z, *Z_1, *Z_2, *Z_3;
-  int ret = 0;
-
-  if (EC_POINT_is_at_infinity(group, point)) {
-    OPENSSL_PUT_ERROR(EC, EC_R_POINT_AT_INFINITY);
+int ec_GFp_mont_field_set_to_one(const EC_GROUP *group, BIGNUM *r,
+                                 BN_CTX *ctx) {
+  if (group->one == NULL) {
+    OPENSSL_PUT_ERROR(EC, EC_R_NOT_INITIALIZED);
     return 0;
   }
 
-  if (ctx == NULL) {
-    ctx = new_ctx = BN_CTX_new();
-    if (ctx == NULL) {
-      return 0;
-    }
+  if (!BN_copy(r, group->one)) {
+    return 0;
   }
-
-  BN_CTX_start(ctx);
-  Z = BN_CTX_get(ctx);
-  Z_1 = BN_CTX_get(ctx);
-  Z_2 = BN_CTX_get(ctx);
-  Z_3 = BN_CTX_get(ctx);
-  if (Z == NULL || Z_1 == NULL || Z_2 == NULL || Z_3 == NULL) {
-    goto err;
-  }
-
-  /* transform  (X, Y, Z)  into  (x, y) := (X/Z^2, Y/Z^3) */
-
-  if (!group->meth->field_decode(group, Z, &point->Z, ctx)) {
-    goto err;
-  }
-
-  if (BN_is_one(Z)) {
-    if (x != NULL && !group->meth->field_decode(group, x, &point->X, ctx)) {
-      goto err;
-    }
-    if (y != NULL && !group->meth->field_decode(group, y, &point->Y, ctx)) {
-      goto err;
-    }
-  } else {
-    if (!BN_mod_inverse(Z_1, Z, &group->field, ctx)) {
-      OPENSSL_PUT_ERROR(EC, ERR_R_BN_LIB);
-      goto err;
-    }
-
-    if (!BN_mod_sqr(Z_2, Z_1, &group->field, ctx)) {
-      goto err;
-    }
-
-    /* in the Montgomery case, field_mul will cancel out Montgomery factor in
-     * X: */
-    if (x != NULL && !group->meth->field_mul(group, x, &point->X, Z_2, ctx)) {
-      goto err;
-    }
-
-    if (y != NULL) {
-      if (!BN_mod_mul(Z_3, Z_2, Z_1, &group->field, ctx)) {
-        goto err;
-      }
-
-      /* in the Montgomery case, field_mul will cancel out Montgomery factor in
-       * Y: */
-      if (!group->meth->field_mul(group, y, &point->Y, Z_3, ctx)) {
-        goto err;
-      }
-    }
-  }
-
-  ret = 1;
-
-err:
-  BN_CTX_end(ctx);
-  BN_CTX_free(new_ctx);
-  return ret;
-}
-
-const EC_METHOD *EC_GFp_mont_method(void) {
-  static const EC_METHOD ret = {
-    ec_GFp_mont_group_init,
-    ec_GFp_mont_group_finish,
-    ec_GFp_mont_group_copy,
-    ec_GFp_mont_group_set_curve,
-    ec_GFp_mont_point_get_affine_coordinates,
-    ec_wNAF_mul /* XXX: Not constant time. */,
-    ec_GFp_mont_check_pub_key_order,
-    ec_GFp_mont_field_mul,
-    ec_GFp_mont_field_sqr,
-    ec_GFp_mont_field_encode,
-    ec_GFp_mont_field_decode,
-  };
-
-  return &ret;
+  return 1;
 }

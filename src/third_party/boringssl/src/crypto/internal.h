@@ -112,15 +112,6 @@
 #include <openssl/ex_data.h>
 #include <openssl/thread.h>
 
-#if defined(_MSC_VER)
-#if !defined(__cplusplus) || _MSC_VER < 1900
-#define alignas(x) __declspec(align(x))
-#define alignof __alignof
-#endif
-#else
-#include <stdalign.h>
-#endif
-
 #if defined(OPENSSL_NO_THREADS)
 #elif defined(OPENSSL_WINDOWS)
 #pragma warning(push, 3)
@@ -135,6 +126,48 @@ extern "C" {
 #endif
 
 
+/* MSVC's C4701 warning about the use of *potentially*--as opposed to
+ * *definitely*--uninitialized values sometimes has false positives. Usually
+ * the false positives can and should be worked around by simplifying the
+ * control flow. When that is not practical, annotate the function containing
+ * the code that triggers the warning with
+ * OPENSSL_SUPPRESS_POTENTIALLY_UNINITIALIZED_WARNINGS after its parameters:
+ *
+ *    void f() OPENSSL_SUPPRESS_POTENTIALLY_UNINITIALIZED_WARNINGS {
+ *       ...
+ *    }
+ *
+ * Note that MSVC's control flow analysis seems to operate on a whole-function
+ * basis, so the annotation must be placed on the entire function, not just a
+ * block within the function. */
+#if defined(_MSC_VER)
+#define OPENSSL_SUPPRESS_POTENTIALLY_UNINITIALIZED_WARNINGS \
+        __pragma(warning(suppress:4701))
+#else
+#define OPENSSL_SUPPRESS_POTENTIALLY_UNINITIALIZED_WARNINGS
+#endif
+
+/* MSVC will sometimes correctly detect unreachable code and issue a warning,
+ * which breaks the build since we treat errors as warnings, in some rare cases
+ * where we want to allow the dead code to continue to exist. In these
+ * situations, annotate the function containing the unreachable code with
+ * OPENSSL_SUPPRESS_UNREACHABLE_CODE_WARNINGS after its parameters:
+ *
+ *    void f() OPENSSL_SUPPRESS_UNREACHABLE_CODE_WARNINGS {
+ *       ...
+ *    }
+ *
+ * Note that MSVC's reachability analysis seems to operate on a whole-function
+ * basis, so the annotation must be placed on the entire function, not just a
+ * block within the function. */
+#if defined(_MSC_VER)
+#define OPENSSL_SUPPRESS_UNREACHABLE_CODE_WARNINGS \
+        __pragma(warning(suppress:4702))
+#else
+#define OPENSSL_SUPPRESS_UNREACHABLE_CODE_WARNINGS
+#endif
+
+
 #if defined(OPENSSL_X86) || defined(OPENSSL_X86_64) || defined(OPENSSL_ARM) || \
     defined(OPENSSL_AARCH64)
 /* OPENSSL_cpuid_setup initializes OPENSSL_ia32cap_P. */
@@ -143,12 +176,6 @@ void OPENSSL_cpuid_setup(void);
 
 #if !defined(inline)
 #define inline __inline
-#endif
-
-
-#if !defined(_MSC_VER) && defined(OPENSSL_64_BIT)
-typedef __int128_t int128_t;
-typedef __uint128_t uint128_t;
 #endif
 
 
@@ -298,7 +325,7 @@ static inline int constant_time_select_int(unsigned int mask, int a, int b) {
 typedef uint32_t CRYPTO_once_t;
 #define CRYPTO_ONCE_INIT 0
 #elif defined(OPENSSL_WINDOWS)
-typedef volatile LONG CRYPTO_once_t;
+typedef LONG CRYPTO_once_t;
 #define CRYPTO_ONCE_INIT 0
 #else
 typedef pthread_once_t CRYPTO_once_t;
@@ -470,7 +497,8 @@ typedef struct {
  * zero otherwise. */
 OPENSSL_EXPORT int CRYPTO_get_ex_new_index(CRYPTO_EX_DATA_CLASS *ex_data_class,
                                            int *out_index, long argl,
-                                           void *argp, CRYPTO_EX_dup *dup_func,
+                                           void *argp, CRYPTO_EX_new *new_func,
+                                           CRYPTO_EX_dup *dup_func,
                                            CRYPTO_EX_free *free_func);
 
 /* CRYPTO_set_ex_data sets an extra data pointer on a given object. Each class
@@ -482,8 +510,11 @@ OPENSSL_EXPORT int CRYPTO_set_ex_data(CRYPTO_EX_DATA *ad, int index, void *val);
  * function. */
 OPENSSL_EXPORT void *CRYPTO_get_ex_data(const CRYPTO_EX_DATA *ad, int index);
 
-/* CRYPTO_new_ex_data initialises a newly allocated |CRYPTO_EX_DATA|. */
-OPENSSL_EXPORT void CRYPTO_new_ex_data(CRYPTO_EX_DATA *ad);
+/* CRYPTO_new_ex_data initialises a newly allocated |CRYPTO_EX_DATA| which is
+ * embedded inside of |obj| which is of class |ex_data_class|. Returns one on
+ * success and zero otherwise. */
+OPENSSL_EXPORT int CRYPTO_new_ex_data(CRYPTO_EX_DATA_CLASS *ex_data_class,
+                                      void *obj, CRYPTO_EX_DATA *ad);
 
 /* CRYPTO_dup_ex_data duplicates |from| into a freshly allocated
  * |CRYPTO_EX_DATA|, |to|. Both of which are inside objects of the given

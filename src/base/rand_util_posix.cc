@@ -10,7 +10,11 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#if 0
 #include "base/files/file_util.h"
+#else
+#include "base/posix/eintr_wrapper.h"
+#endif
 #include "base/lazy_instance.h"
 #include "base/logging.h"
 
@@ -45,6 +49,18 @@ uint64_t RandUint64() {
   uint64_t number;
   RandBytes(&number, sizeof(number));
   return number;
+}
+
+bool ReadFromFD(int fd, char* buffer, size_t bytes) {
+  size_t total_read = 0;
+  while (total_read < bytes) {
+    ssize_t bytes_read =
+        HANDLE_EINTR(read(fd, buffer + total_read, bytes - total_read));
+    if (bytes_read <= 0)
+      break;
+    total_read += bytes_read;
+  }
+  return total_read == bytes;
 }
 
 void RandBytes(void* output, size_t output_length) {

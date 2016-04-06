@@ -7,9 +7,13 @@
 #include <assert.h>
 #include <algorithm>
 
+#if 0
 #include "base/files/memory_mapped_file.h"
+#endif
 #include "base/logging.h"
+#if 0
 #include "base/memory/shared_memory.h"
+#endif
 #include "base/metrics/histogram_macros.h"
 
 namespace {
@@ -666,6 +670,7 @@ LocalPersistentMemoryAllocator::~LocalPersistentMemoryAllocator() {
 
 
 //----- SharedPersistentMemoryAllocator ----------------------------------------
+#if 0
 
 SharedPersistentMemoryAllocator::SharedPersistentMemoryAllocator(
     scoped_ptr<SharedMemory> memory,
@@ -702,5 +707,6 @@ bool FilePersistentMemoryAllocator::IsFileAcceptable(
     const MemoryMappedFile& file) {
   return IsMemoryAcceptable(file.data(), file.length(), 0, true);
 }
+#endif
 
 }  // namespace base

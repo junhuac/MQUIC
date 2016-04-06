@@ -24,8 +24,10 @@ class NET_EXPORT_PRIVATE QuicAlarm {
    public:
     virtual ~Delegate() {}
 
-    // Invoked when the alarm fires.
-    virtual void OnAlarm() = 0;
+    // Invoked when the alarm fires.  If the return value is not
+    // infinite, then the alarm will be rescheduled at the
+    // specified time.
+    virtual QuicTime OnAlarm() = 0;
   };
 
   explicit QuicAlarm(QuicArenaScopedPtr<Delegate> delegate);
@@ -34,7 +36,7 @@ class NET_EXPORT_PRIVATE QuicAlarm {
   // Sets the alarm to fire at |deadline|.  Must not be called while
   // the alarm is set.  To reschedule an alarm, call Cancel() first,
   // then Set().
-  void Set(QuicTime new_deadline);
+  void Set(QuicTime deadline);
 
   // Cancels the alarm.  May be called repeatedly.  Does not
   // guarantee that the underlying scheduling system will remove
@@ -45,9 +47,8 @@ class NET_EXPORT_PRIVATE QuicAlarm {
   // Cancels and sets the alarm if the |deadline| is farther from the current
   // deadline than |granularity|, and otherwise does nothing.  If |deadline| is
   // not initialized, the alarm is cancelled.
-  void Update(QuicTime new_deadline, QuicTime::Delta granularity);
+  void Update(QuicTime deadline, QuicTime::Delta granularity);
 
-  // Returns true if |deadline_| has been set to a non-zero time.
   bool IsSet() const;
 
   QuicTime deadline() const { return deadline_; }

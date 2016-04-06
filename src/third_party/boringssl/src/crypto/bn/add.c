@@ -56,8 +56,6 @@
 
 #include <openssl/bn.h>
 
-#include <string.h>
-
 #include <openssl/err.h>
 #include <openssl/mem.h>
 
@@ -313,8 +311,27 @@ int BN_usub(BIGNUM *r, const BIGNUM *a, const BIGNUM *b) {
     }
   }
 
-  if (dif > 0 && rp != ap) {
-    memcpy(rp, ap, sizeof(*rp) * dif);
+  if (rp != ap) {
+    for (;;) {
+      if (!dif--) {
+        break;
+      }
+      rp[0] = ap[0];
+      if (!dif--) {
+        break;
+      }
+      rp[1] = ap[1];
+      if (!dif--) {
+        break;
+      }
+      rp[2] = ap[2];
+      if (!dif--) {
+        break;
+      }
+      rp[3] = ap[3];
+      rp += 4;
+      ap += 4;
+    }
   }
 
   r->top = max;

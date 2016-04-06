@@ -10,12 +10,10 @@
 #include "net/quic/quic_spdy_session.h"
 #include "net/quic/quic_utils.h"
 #include "net/quic/quic_write_blocked_list.h"
-#include "net/quic/spdy_utils.h"
 
 using base::StringPiece;
-using net::SpdyPriority;
 using std::min;
-using std::string;
+using net::SpdyPriority;
 
 namespace net {
 
@@ -78,16 +76,12 @@ size_t QuicSpdyStream::WriteHeaders(
   return bytes_written;
 }
 
-void QuicSpdyStream::WriteOrBufferBody(
-    const string& data,
-    bool fin,
-    QuicAckListenerInterface* ack_notifier_delegate) {
-  WriteOrBufferData(data, fin, ack_notifier_delegate);
-}
-
 size_t QuicSpdyStream::WriteTrailers(
     SpdyHeaderBlock trailer_block,
     QuicAckListenerInterface* ack_notifier_delegate) {
+  if (!FLAGS_quic_supports_trailers) {
+    return 0;
+  }
   if (fin_sent()) {
     QUIC_BUG << "Trailers cannot be sent after a FIN.";
     return 0;
@@ -140,7 +134,8 @@ bool QuicSpdyStream::IsDoneReading() const {
 bool QuicSpdyStream::HasBytesToRead() const {
   bool headers_to_read = !decompressed_headers_.empty();
   bool body_to_read = sequencer()->HasBytesToRead();
-  bool trailers_to_read = !decompressed_trailers_.empty();
+  bool trailers_to_read =
+      (FLAGS_quic_supports_trailers && !decompressed_trailers_.empty());
   return headers_to_read || body_to_read || trailers_to_read;
 }
 
@@ -162,7 +157,7 @@ void QuicSpdyStream::SetPriority(SpdyPriority priority) {
 }
 
 void QuicSpdyStream::OnStreamHeaders(StringPiece headers_data) {
-  if (!headers_decompressed_) {
+  if (!FLAGS_quic_supports_trailers || !headers_decompressed_) {
     headers_data.AppendToString(&decompressed_headers_);
   } else {
     DCHECK(!trailers_decompressed_);
@@ -176,7 +171,7 @@ void QuicSpdyStream::OnStreamHeadersPriority(SpdyPriority priority) {
 }
 
 void QuicSpdyStream::OnStreamHeadersComplete(bool fin, size_t frame_len) {
-  if (!headers_decompressed_) {
+  if (!FLAGS_quic_supports_trailers || !headers_decompressed_) {
     OnInitialHeadersComplete(fin, frame_len);
   } else {
     OnTrailingHeadersComplete(fin, frame_len);
@@ -202,9 +197,8 @@ void QuicSpdyStream::OnPromiseHeadersComplete(
     size_t /* frame_len */) {
   // To be overridden in QuicSpdyClientStream.  Not supported on
   // server side.
-  session()->connection()->CloseConnection(
-      QUIC_INVALID_HEADERS_STREAM_DATA, "Promise headers received by server",
-      ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+  session()->connection()->SendConnectionCloseWithDetails(
+      QUIC_INVALID_HEADERS_STREAM_DATA, "Promise headers received by server");
   return;
 }
 
@@ -212,36 +206,18 @@ void QuicSpdyStream::OnTrailingHeadersComplete(bool fin, size_t /*frame_len*/) {
   DCHECK(!trailers_decompressed_);
   if (fin_received()) {
     DLOG(ERROR) << "Received Trailers after FIN, on stream: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers after fin",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session()->connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers after fin");
     return;
   }
   if (!fin) {
     DLOG(ERROR) << "Trailers must have FIN set, on stream: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Fin missing from trailers",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session()->connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_HEADERS_STREAM_DATA, "Fin missing from trailers");
     return;
   }
 
-  size_t final_byte_offset = 0;
-  SpdyHeaderBlock trailers;
-  if (!SpdyUtils::ParseTrailers(decompressed_trailers().data(),
-                                decompressed_trailers().length(),
-                                &final_byte_offset, &received_trailers_)) {
-    DLOG(ERROR) << "Trailers are malformed: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers are malformed",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
-    return;
-  }
-
-  // The data on this stream ends at |final_byte_offset|.
-  DVLOG(1) << "Stream ends at byte offset: " << final_byte_offset
-           << "  currently read: " << stream_bytes_read();
-
-  OnStreamFrame(QuicStreamFrame(id(), fin, final_byte_offset, StringPiece()));
+  OnStreamFrame(QuicStreamFrame(id(), fin, stream_bytes_read(), StringPiece()));
   trailers_decompressed_ = true;
 }
 
@@ -274,24 +250,10 @@ bool QuicSpdyStream::FinishedReadingHeaders() const {
   return headers_decompressed_ && decompressed_headers_.empty();
 }
 
-bool QuicSpdyStream::ParseHeaderStatusCode(SpdyHeaderBlock* header,
-                                           int* status_code) const {
-  StringPiece status = (*header)[":status"];
-  if (status.size() != 3) {
-    return false;
-  }
-  // First character must be an integer in range [1,5].
-  if (status[0] < '1' || status[0] > '5') {
-    return false;
-  }
-  // The remaining two characters must be integers.
-  if (!isdigit(status[1]) || !isdigit(status[2])) {
-    return false;
-  }
-  return StringToInt(status, status_code);
-}
-
 bool QuicSpdyStream::FinishedReadingTrailers() const {
+  if (!FLAGS_quic_supports_trailers) {
+    return true;
+  }
   // If no further trailing headers are expected, and the decompressed trailers
   // (if any) have been consumed, then reading of trailers is finished.
   bool no_more_trailers = fin_received() || trailers_decompressed_;

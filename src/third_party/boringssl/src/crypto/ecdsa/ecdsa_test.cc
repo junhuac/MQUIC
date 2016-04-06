@@ -176,8 +176,12 @@ static bool TestBuiltin(FILE *out) {
       fprintf(out, " failed\n");
       return false;
     }
-    const BIGNUM *order = EC_GROUP_get0_order(group.get());
-    if (BN_num_bits(order) < 160) {
+    ScopedBIGNUM order(BN_new());
+    if (!order || !EC_GROUP_get_order(group.get(), order.get(), NULL)) {
+      fprintf(out, " failed\n");
+      return false;
+    }
+    if (BN_num_bits(order.get()) < 160) {
       // Too small to test.
       fprintf(out, " skipped\n");
       continue;
@@ -257,7 +261,7 @@ static bool TestBuiltin(FILE *out) {
         signature.data(), signature.size()));
     if (!ecdsa_sig ||
         !TestTamperedSig(out, kEncodedApi, digest, 20, ecdsa_sig.get(),
-                         eckey.get(), order)) {
+                         eckey.get(), order.get())) {
       fprintf(out, " failed\n");
       return false;
     }
@@ -296,7 +300,7 @@ static bool TestBuiltin(FILE *out) {
     fflush(out);
     // Verify a tampered signature.
     if (!TestTamperedSig(out, kRawApi, digest, 20, ecdsa_sig.get(), eckey.get(),
-                         order)) {
+                         order.get())) {
       fprintf(out, " failed\n");
       return false;
     }
@@ -340,19 +344,16 @@ static bool TestECDSA_SIG_max_len(size_t order_len) {
   return true;
 }
 
-static size_t BitsToBytes(size_t bits) {
-  return (bits / 8) + (7 + (bits % 8)) / 8;
-}
-
 int main(void) {
   CRYPTO_library_init();
+  ERR_load_crypto_strings();
 
   if (!TestBuiltin(stdout) ||
-      !TestECDSA_SIG_max_len(BitsToBytes(224)) ||
-      !TestECDSA_SIG_max_len(BitsToBytes(256)) ||
-      !TestECDSA_SIG_max_len(BitsToBytes(384)) ||
-      !TestECDSA_SIG_max_len(BitsToBytes(521)) ||
-      !TestECDSA_SIG_max_len(BitsToBytes(10000))) {
+      !TestECDSA_SIG_max_len(224/8) ||
+      !TestECDSA_SIG_max_len(256/8) ||
+      !TestECDSA_SIG_max_len(384/8) ||
+      !TestECDSA_SIG_max_len(512/8) ||
+      !TestECDSA_SIG_max_len(10000)) {
     printf("\nECDSA test failed\n");
     ERR_print_errors_fp(stdout);
     return 1;

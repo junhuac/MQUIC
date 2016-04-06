@@ -30,6 +30,8 @@ typedef HANDLE MutexHandle;
 #elif defined(OS_POSIX)
 #if defined(OS_NACL)
 #include <sys/time.h>  // timespec doesn't seem to be in <time.h>
+#else
+#include <sys/syscall.h>
 #endif
 #include <time.h>
 #endif
@@ -860,7 +862,7 @@ void CloseLogFile() {
 }
 
 void RawLog(int level, const char* message) {
-  if (level >= g_min_log_level && message) {
+  if (level >= g_min_log_level) {
     size_t bytes_written = 0;
     const size_t message_len = strlen(message);
     int rv;
@@ -913,5 +915,5 @@ BASE_EXPORT void LogErrorNotReached(const char* file, int line) {
 }  // namespace logging
 
 std::ostream& std::operator<<(std::ostream& out, const wchar_t* wstr) {
-  return out << (wstr ? base::WideToUTF8(wstr) : std::string());
+  return out << base::WideToUTF8(wstr);
 }

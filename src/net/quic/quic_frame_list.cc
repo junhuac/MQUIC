@@ -4,12 +4,7 @@
 
 #include "net/quic/quic_frame_list.h"
 
-#include <algorithm>
-
 #include "base/logging.h"
-
-using std::list;
-using std::string;
 
 namespace net {
 
@@ -34,7 +29,7 @@ bool QuicFrameList::Empty() const {
 }
 
 QuicErrorCode QuicFrameList::OnStreamData(QuicStreamOffset offset,
-                                          base::StringPiece data,
+                                          StringPiece data,
                                           QuicTime timestamp,
                                           size_t* const bytes_buffered) {
   *bytes_buffered = 0;

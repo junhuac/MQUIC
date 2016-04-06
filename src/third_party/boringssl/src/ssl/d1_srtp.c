@@ -116,6 +116,7 @@
 
 #include <openssl/ssl.h>
 
+#include <stdio.h>
 #include <string.h>
 
 #include <openssl/bytestring.h>
@@ -131,12 +132,6 @@ const SRTP_PROTECTION_PROFILE kSRTPProfiles[] = {
     },
     {
         "SRTP_AES128_CM_SHA1_32", SRTP_AES128_CM_SHA1_32,
-    },
-    {
-        "SRTP_AEAD_AES_128_GCM", SRTP_AEAD_AES_128_GCM,
-    },
-    {
-        "SRTP_AEAD_AES_256_GCM", SRTP_AEAD_AES_256_GCM,
     },
     {0, 0},
 };
@@ -211,7 +206,7 @@ STACK_OF(SRTP_PROTECTION_PROFILE) *SSL_get_srtp_profiles(SSL *ssl) {
     return ssl->srtp_profiles;
   }
 
-  if (ssl->ctx->srtp_profiles != NULL) {
+  if (ssl->ctx != NULL && ssl->ctx->srtp_profiles != NULL) {
     return ssl->ctx->srtp_profiles;
   }
 

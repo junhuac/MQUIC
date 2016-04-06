@@ -65,7 +65,6 @@
 #include <openssl/mem.h>
 
 #include "conf_def.h"
-#include "internal.h"
 
 
 static uint32_t conf_value_hash(const CONF_VALUE *v) {
@@ -153,7 +152,7 @@ void NCONF_free(CONF *conf) {
   OPENSSL_free(conf);
 }
 
-static CONF_VALUE *NCONF_new_section(const CONF *conf, const char *section) {
+CONF_VALUE *NCONF_new_section(const CONF *conf, const char *section) {
   STACK_OF(CONF_VALUE) *sk = NULL;
   int ok = 0;
   CONF_VALUE *v = NULL, *old_value;
@@ -777,12 +776,3 @@ int CONF_parse_list(const char *list, char sep, int remove_whitespace,
     lstart = p + 1;
   }
 }
-
-int CONF_modules_load_file(CONF_MUST_BE_NULL *filename, const char *appname,
-                           unsigned long flags) {
-  return 1;
-}
-
-void CONF_modules_free(void) {}
-
-void OPENSSL_config(CONF_MUST_BE_NULL *config_name) {}

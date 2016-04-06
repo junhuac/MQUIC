@@ -62,7 +62,7 @@ endif()
 
 #add_subdirectory(crypto)
 
-include_directories(src src/third_party/modp_b64 boringssl/include src/third_party/protobuf/src)
+include_directories(src src/third_party/modp_b64 src/third_party/boringssl/src/include src/third_party/protobuf/src)
 
 set(
 	NET_SOURCES
@@ -383,7 +383,7 @@ add_library(
 #)
 
 # XXX(serialx): Not sure if this is safe, since our CFLAGS contaminate boringssl build
-add_subdirectory(boringssl)
-add_subdirectory(protobuf)
+add_subdirectory(src/third_party/boringssl/src/)
+add_subdirectory(src/third_party/protobuf)
 
 #target_link_libraries(test_quic_server quic ssl crypto -pthread ${BASE_ARCH_LIBRARIES})

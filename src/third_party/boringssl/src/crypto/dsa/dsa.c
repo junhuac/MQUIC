@@ -61,6 +61,7 @@
 
 #include <string.h>
 
+#include <openssl/asn1.h>
 #include <openssl/bn.h>
 #include <openssl/dh.h>
 #include <openssl/digest.h>
@@ -72,6 +73,7 @@
 #include <openssl/sha.h>
 #include <openssl/thread.h>
 
+#include "internal.h"
 #include "../internal.h"
 
 
@@ -84,7 +86,7 @@
 static CRYPTO_EX_DATA_CLASS g_ex_data_class = CRYPTO_EX_DATA_CLASS_INIT;
 
 DSA *DSA_new(void) {
-  DSA *dsa = OPENSSL_malloc(sizeof(DSA));
+  DSA *dsa = (DSA *)OPENSSL_malloc(sizeof(DSA));
   if (dsa == NULL) {
     OPENSSL_PUT_ERROR(DSA, ERR_R_MALLOC_FAILURE);
     return NULL;
@@ -92,10 +94,16 @@ DSA *DSA_new(void) {
 
   memset(dsa, 0, sizeof(DSA));
 
+  dsa->write_params = 1;
   dsa->references = 1;
 
   CRYPTO_MUTEX_init(&dsa->method_mont_p_lock);
-  CRYPTO_new_ex_data(&dsa->ex_data);
+
+  if (!CRYPTO_new_ex_data(&g_ex_data_class, dsa, &dsa->ex_data)) {
+    CRYPTO_MUTEX_cleanup(&dsa->method_mont_p_lock);
+    OPENSSL_free(dsa);
+    return NULL;
+  }
 
   return dsa;
 }
@@ -390,21 +398,6 @@ err:
   return ok;
 }
 
-DSA *DSAparams_dup(const DSA *dsa) {
-  DSA *ret = DSA_new();
-  if (ret == NULL) {
-    return NULL;
-  }
-  ret->p = BN_dup(dsa->p);
-  ret->q = BN_dup(dsa->q);
-  ret->g = BN_dup(dsa->g);
-  if (ret->p == NULL || ret->q == NULL || ret->g == NULL) {
-    DSA_free(ret);
-    return NULL;
-  }
-  return ret;
-}
-
 int DSA_generate_key(DSA *dsa) {
   int ok = 0;
   BN_CTX *ctx = NULL;
@@ -548,6 +541,10 @@ redo:
     goto err;
   }
 
+  ret = DSA_SIG_new();
+  if (ret == NULL) {
+    goto err;
+  }
   /* Redo if r or s is zero as required by FIPS 186-3: this is
    * very unlikely. */
   if (BN_is_zero(r) || BN_is_zero(s)) {
@@ -557,15 +554,11 @@ redo:
     }
     goto redo;
   }
-  ret = DSA_SIG_new();
-  if (ret == NULL) {
-    goto err;
-  }
   ret->r = r;
   ret->s = s;
 
 err:
-  if (ret == NULL) {
+  if (!ret) {
     OPENSSL_PUT_ERROR(DSA, reason);
     BN_free(r);
     BN_free(s);
@@ -752,38 +745,24 @@ err:
   return ret;
 }
 
-/* der_len_len returns the number of bytes needed to represent a length of |len|
- * in DER. */
-static size_t der_len_len(size_t len) {
-  if (len < 0x80) {
-    return 1;
-  }
-  size_t ret = 1;
-  while (len > 0) {
-    ret++;
-    len >>= 8;
-  }
-  return ret;
-}
-
 int DSA_size(const DSA *dsa) {
-  size_t order_len = BN_num_bytes(dsa->q);
-  /* Compute the maximum length of an |order_len| byte integer. Defensively
-   * assume that the leading 0x00 is included. */
-  size_t integer_len = 1 /* tag */ + der_len_len(order_len + 1) + 1 + order_len;
-  if (integer_len < order_len) {
-    return 0;
-  }
-  /* A DSA signature is two INTEGERs. */
-  size_t value_len = 2 * integer_len;
-  if (value_len < integer_len) {
-    return 0;
-  }
-  /* Add the header. */
-  size_t ret = 1 /* tag */ + der_len_len(value_len) + value_len;
-  if (ret < value_len) {
-    return 0;
-  }
+  int ret, i;
+  ASN1_INTEGER bs;
+  unsigned char buf[4]; /* 4 bytes looks really small.
+                           However, i2d_ASN1_INTEGER() will not look
+                           beyond the first byte, as long as the second
+                           parameter is NULL. */
+
+  i = BN_num_bits(dsa->q);
+  bs.length = (i + 7) / 8;
+  bs.data = buf;
+  bs.type = V_ASN1_INTEGER;
+  /* If the top bit is set the asn1 encoding is 1 larger. */
+  buf[0] = 0xff;
+
+  i = i2d_ASN1_INTEGER(&bs, NULL);
+  i += i; /* r and s */
+  ret = ASN1_object_size(1, i, V_ASN1_SEQUENCE);
   return ret;
 }
 
@@ -885,11 +864,11 @@ err:
   return ret;
 }
 
-int DSA_get_ex_new_index(long argl, void *argp, CRYPTO_EX_unused *unused,
+int DSA_get_ex_new_index(long argl, void *argp, CRYPTO_EX_new *new_func,
                          CRYPTO_EX_dup *dup_func, CRYPTO_EX_free *free_func) {
   int index;
-  if (!CRYPTO_get_ex_new_index(&g_ex_data_class, &index, argl, argp, dup_func,
-                               free_func)) {
+  if (!CRYPTO_get_ex_new_index(&g_ex_data_class, &index, argl, argp, new_func,
+                               dup_func, free_func)) {
     return -1;
   }
   return index;

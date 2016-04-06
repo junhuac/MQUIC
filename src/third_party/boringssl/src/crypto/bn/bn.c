@@ -166,10 +166,11 @@ void BN_clear(BIGNUM *bn) {
 }
 
 const BIGNUM *BN_value_one(void) {
-  static const BN_ULONG kOneLimbs[1] = { 1 };
-  static const BIGNUM kOne = STATIC_BIGNUM(kOneLimbs);
+  static const BN_ULONG data_one = 1;
+  static const BIGNUM const_one = {(BN_ULONG *)&data_one, 1, 1, 0,
+                                   BN_FLG_STATIC_DATA};
 
-  return &kOne;
+  return &const_one;
 }
 
 void BN_with_flags(BIGNUM *out, const BIGNUM *in, int flags) {
@@ -266,18 +267,6 @@ int BN_set_word(BIGNUM *bn, BN_ULONG value) {
   return 1;
 }
 
-int bn_set_words(BIGNUM *bn, const BN_ULONG *words, size_t num) {
-  if (bn_wexpand(bn, num) == NULL) {
-    return 0;
-  }
-  memmove(bn->d, words, num * sizeof(BN_ULONG));
-  /* |bn_wexpand| verified that |num| isn't too large. */
-  bn->top = (int)num;
-  bn_correct_top(bn);
-  bn->neg = 0;
-  return 1;
-}
-
 int BN_is_negative(const BIGNUM *bn) {
   return bn->neg != 0;
 }
@@ -307,7 +296,7 @@ BIGNUM *bn_wexpand(BIGNUM *bn, size_t words) {
     return NULL;
   }
 
-  a = OPENSSL_malloc(sizeof(BN_ULONG) * words);
+  a = (BN_ULONG *)OPENSSL_malloc(sizeof(BN_ULONG) * words);
   if (a == NULL) {
     OPENSSL_PUT_ERROR(BN, ERR_R_MALLOC_FAILURE);
     return NULL;

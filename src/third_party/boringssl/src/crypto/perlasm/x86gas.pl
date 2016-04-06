@@ -17,7 +17,7 @@ sub opsize()
 { my $reg=shift;
     if    ($reg =~ m/^%e/o)		{ "l"; }
     elsif ($reg =~ m/^%[a-d][hl]$/o)	{ "b"; }
-    elsif ($reg =~ m/^%[yxm]/o)		{ undef; }
+    elsif ($reg =~ m/^%[xm]/o)		{ undef; }
     else				{ "w"; }
 }
 

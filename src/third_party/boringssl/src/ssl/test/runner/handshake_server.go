@@ -286,7 +286,7 @@ Curves:
 		hs.hello.secureRenegotiation = hs.clientHello.secureRenegotiation
 	}
 
-	if c.noRenegotiationInfo() {
+	if c.config.Bugs.NoRenegotiationInfo {
 		hs.hello.secureRenegotiation = nil
 	}
 
@@ -626,22 +626,13 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 	// certificate message, even if it's empty.
 	if config.ClientAuth >= RequestClientCert {
 		var certMsg *certificateMsg
-		var certificates [][]byte
-		if certMsg, ok = msg.(*certificateMsg); ok {
-			if c.vers == VersionSSL30 && len(certMsg.certificates) == 0 {
-				return errors.New("tls: empty certificate message in SSL 3.0")
-			}
-
-			hs.writeClientHash(certMsg.marshal())
-			certificates = certMsg.certificates
-		} else if c.vers != VersionSSL30 {
-			// In TLS, the Certificate message is required. In SSL
-			// 3.0, the peer skips it when sending no certificates.
+		if certMsg, ok = msg.(*certificateMsg); !ok {
 			c.sendAlert(alertUnexpectedMessage)
 			return unexpectedMessageError(certMsg, msg)
 		}
+		hs.writeClientHash(certMsg.marshal())
 
-		if len(certificates) == 0 {
+		if len(certMsg.certificates) == 0 {
 			// The client didn't actually send a certificate
 			switch config.ClientAuth {
 			case RequireAnyClientCert, RequireAndVerifyClientCert:
@@ -650,16 +641,14 @@ func (hs *serverHandshakeState) doFullHandshake() error {
 			}
 		}
 
-		pub, err = hs.processCertsFromClient(certificates)
+		pub, err = hs.processCertsFromClient(certMsg.certificates)
 		if err != nil {
 			return err
 		}
 
-		if ok {
-			msg, err = c.readHandshake()
-			if err != nil {
-				return err
-			}
+		msg, err = c.readHandshake()
+		if err != nil {
+			return err
 		}
 	}
 
@@ -925,11 +914,7 @@ func (hs *serverHandshakeState) sendFinished(out []byte) error {
 	c.dtlsFlushHandshake()
 
 	if !c.config.Bugs.SkipChangeCipherSpec {
-		ccs := []byte{1}
-		if c.config.Bugs.BadChangeCipherSpec != nil {
-			ccs = c.config.Bugs.BadChangeCipherSpec
-		}
-		c.writeRecord(recordTypeChangeCipherSpec, ccs)
+		c.writeRecord(recordTypeChangeCipherSpec, []byte{1})
 	}
 
 	if c.config.Bugs.AppDataAfterChangeCipherSpec != nil {

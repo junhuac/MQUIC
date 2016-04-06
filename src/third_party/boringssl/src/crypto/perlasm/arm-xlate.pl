@@ -55,9 +55,7 @@ my $globl = sub {
 			      };
     }
 
-    $ret = ".globl	$name\n";
-    # All symbols in assembly files are hidden.
-    $ret .= &$hidden($name);
+    $ret = ".globl	$name" if (!$ret);
     $$global = $name;
     $ret;
 };
@@ -167,6 +165,6 @@ while($line=<>) {
     print "\n";
 }
 
-print "#endif\n" if ($flavour eq "linux32" || $flavour eq "linux64");
+print "#endif" if ($flavour eq "linux32" || $flavour eq "linux64");
 
 close STDOUT;

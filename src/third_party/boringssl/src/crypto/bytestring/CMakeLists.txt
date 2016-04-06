@@ -5,7 +5,6 @@ add_library(
 
   OBJECT
 
-  asn1_compat.c
   ber.c
   cbs.c
   cbb.c

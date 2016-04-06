@@ -60,15 +60,6 @@
 #include <string.h>
 
 
-uint8_t *MD4(const uint8_t *data, size_t len, uint8_t *out) {
-  MD4_CTX ctx;
-  MD4_Init(&ctx);
-  MD4_Update(&ctx, data, len);
-  MD4_Final(out, &ctx);
-
-  return out;
-}
-
 /* Implemented from RFC1186 The MD4 Message-Digest Algorithm. */
 
 int MD4_Init(MD4_CTX *md4) {
@@ -93,13 +84,13 @@ void md4_block_data_order(uint32_t *state, const uint8_t *data, size_t num);
   do {                         \
     uint32_t ll;               \
     ll = (c)->h[0];            \
-    HOST_l2c(ll, (s));         \
+    (void) HOST_l2c(ll, (s));  \
     ll = (c)->h[1];            \
-    HOST_l2c(ll, (s));         \
+    (void) HOST_l2c(ll, (s));  \
     ll = (c)->h[2];            \
-    HOST_l2c(ll, (s));         \
+    (void) HOST_l2c(ll, (s));  \
     ll = (c)->h[3];            \
-    HOST_l2c(ll, (s));         \
+    (void) HOST_l2c(ll, (s));  \
   } while (0)
 #define HASH_BLOCK_DATA_ORDER md4_block_data_order
 
@@ -111,8 +102,6 @@ void md4_block_data_order(uint32_t *state, const uint8_t *data, size_t num);
 #define F(b, c, d) ((((c) ^ (d)) & (b)) ^ (d))
 #define G(b, c, d) (((b) & (c)) | ((b) & (d)) | ((c) & (d)))
 #define H(b, c, d) ((b) ^ (c) ^ (d))
-
-#define ROTATE(a, n) (((a) << (n)) | ((a) >> (32 - (n))))
 
 #define R0(a, b, c, d, k, s, t)        \
   {                                    \

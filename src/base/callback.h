@@ -7,6 +7,7 @@
 
 #include "base/callback_forward.h"
 #include "base/callback_internal.h"
+#include "base/template_util.h"
 
 // NOTE: Header files that do not require the full definition of Callback or
 // Closure should #include "base/callback_forward.h" instead of this file.
@@ -340,65 +341,63 @@
 //      void Bar(char* ptr);
 //      Bind(&Foo, "test");
 //      Bind(&Bar, "test");  // This fails because ptr is not const.
+
+namespace base {
+
+// First, we forward declare the Callback class template. This informs the
+// compiler that the template only has 1 type parameter which is the function
+// signature that the Callback is representing.
+//
+// After this, create template specializations for 0-7 parameters. Note that
+// even though the template typelist grows, the specialization still
+// only has one type: the function signature.
 //
 // If you are thinking of forward declaring Callback in your own header file,
 // please include "base/callback_forward.h" instead.
 
-namespace base {
 namespace internal {
 template <typename Runnable, typename RunType, typename... BoundArgsType>
 struct BindState;
 }  // namespace internal
 
-template <typename R, typename... Args, internal::CopyMode copy_mode>
-class Callback<R(Args...), copy_mode>
-    : public internal::CallbackBase<copy_mode> {
+template <typename R, typename... Args>
+class Callback<R(Args...)> : public internal::CallbackBase {
  public:
   // MSVC 2013 doesn't support Type Alias of function types.
   // Revisit this after we update it to newer version.
   typedef R RunType(Args...);
 
-  Callback() : internal::CallbackBase<copy_mode>(nullptr) {}
+  Callback() : CallbackBase(nullptr) { }
 
-  template <typename Runnable, typename BindRunType, typename... BoundArgs>
+  template <typename Runnable, typename BindRunType, typename... BoundArgsType>
   explicit Callback(
-      internal::BindState<Runnable, BindRunType, BoundArgs...>* bind_state)
-      : internal::CallbackBase<copy_mode>(bind_state) {
+      internal::BindState<Runnable, BindRunType, BoundArgsType...>* bind_state)
+      : CallbackBase(bind_state) {
     // Force the assignment to a local variable of PolymorphicInvoke
     // so the compiler will typecheck that the passed in Run() method has
     // the correct type.
     PolymorphicInvoke invoke_func =
-        &internal::BindState<Runnable, BindRunType, BoundArgs...>
+        &internal::BindState<Runnable, BindRunType, BoundArgsType...>
             ::InvokerType::Run;
-    using InvokeFuncStorage =
-        typename internal::CallbackBase<copy_mode>::InvokeFuncStorage;
-    this->polymorphic_invoke_ =
-        reinterpret_cast<InvokeFuncStorage>(invoke_func);
+    polymorphic_invoke_ = reinterpret_cast<InvokeFuncStorage>(invoke_func);
   }
 
   bool Equals(const Callback& other) const {
-    return this->EqualsInternal(other);
+    return CallbackBase::Equals(other);
   }
 
-  // Run() makes an extra copy compared to directly calling the bound function
-  // if an argument is passed-by-value and is copyable-but-not-movable:
-  // i.e. below copies CopyableNonMovableType twice.
-  //   void F(CopyableNonMovableType) {}
-  //   Bind(&F).Run(CopyableNonMovableType());
-  //
-  // We can not fully apply Perfect Forwarding idiom to the callchain from
-  // Callback::Run() to the target function. Perfect Forwarding requires
-  // knowing how the caller will pass the arguments. However, the signature of
-  // InvokerType::Run() needs to be fixed in the callback constructor, so Run()
-  // cannot template its arguments based on how it's called.
-  R Run(Args... args) const {
+  R Run(typename internal::CallbackParamTraits<Args>::ForwardType... args)
+      const {
     PolymorphicInvoke f =
-        reinterpret_cast<PolymorphicInvoke>(this->polymorphic_invoke_);
-    return f(this->bind_state_.get(), std::forward<Args>(args)...);
+        reinterpret_cast<PolymorphicInvoke>(polymorphic_invoke_);
+
+    return f(bind_state_.get(), internal::CallbackForward(args)...);
   }
 
  private:
-  using PolymorphicInvoke = R (*)(internal::BindStateBase*, Args&&...);
+  using PolymorphicInvoke =
+      R(*)(internal::BindStateBase*,
+           typename internal::CallbackParamTraits<Args>::ForwardType...);
 };
 
 }  // namespace base

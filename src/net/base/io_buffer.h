@@ -9,7 +9,6 @@
 
 #include <string>
 
-#include "base/memory/free_deleter.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "base/pickle.h"
