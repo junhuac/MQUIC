@@ -4138,3 +4138,6 @@
 #define SN_dh_cofactor_kdf		"dh-cofactor-kdf"
 #define NID_dh_cofactor_kdf		947
 
+#define SN_X25519		"X25519"
+#define NID_X25519		948
+

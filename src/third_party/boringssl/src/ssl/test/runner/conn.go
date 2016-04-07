@@ -189,6 +189,11 @@ func (hc *halfConn) changeCipherSpec(config *Config) error {
 	hc.nextMac = nil
 	hc.config = config
 	hc.incEpoch()
+
+	if config.Bugs.NullAllCiphers {
+		hc.cipher = nil
+		hc.mac = nil
+	}
 	return nil
 }
 
@@ -851,7 +856,7 @@ func (c *Conn) sendAlertLocked(level byte, err alert) error {
 // L < c.out.Mutex.
 func (c *Conn) sendAlert(err alert) error {
 	level := byte(alertLevelError)
-	if err == alertNoRenegotiation || err == alertCloseNotify {
+	if err == alertNoRenegotiation || err == alertCloseNotify || err == alertNoCertficate {
 		level = alertLevelWarning
 	}
 	return c.SendAlert(level, err)
@@ -1201,8 +1206,11 @@ func (c *Conn) handleRenegotiation() error {
 
 func (c *Conn) Renegotiate() error {
 	if !c.isClient {
-		helloReq := new(helloRequestMsg)
-		c.writeRecord(recordTypeHandshake, helloReq.marshal())
+		helloReq := new(helloRequestMsg).marshal()
+		if c.config.Bugs.BadHelloRequest != nil {
+			helloReq = c.config.Bugs.BadHelloRequest
+		}
+		c.writeRecord(recordTypeHandshake, helloReq)
 	}
 
 	c.handshakeComplete = false
@@ -1413,4 +1421,19 @@ func (c *Conn) ExportKeyingMaterial(length int, label, context []byte, useContex
 	result := make([]byte, length)
 	prfForVersion(c.vers, c.cipherSuite)(result, c.masterSecret[:], label, seed)
 	return result, nil
+}
+
+// noRenegotiationInfo returns true if the renegotiation info extension
+// should be supported in the current handshake.
+func (c *Conn) noRenegotiationInfo() bool {
+	if c.config.Bugs.NoRenegotiationInfo {
+		return true
+	}
+	if c.cipherSuite == nil && c.config.Bugs.NoRenegotiationInfoInInitial {
+		return true
+	}
+	if c.cipherSuite != nil && c.config.Bugs.NoRenegotiationInfoAfterInitial {
+		return true
+	}
+	return false
 }
