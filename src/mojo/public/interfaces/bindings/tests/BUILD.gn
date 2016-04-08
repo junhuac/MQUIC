@@ -1,0 +1,118 @@
+# Copyright 2014 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("../../../tools/bindings/mojom.gni")
+
+test_interfaces_mojom = [
+  "math_calculator.mojom",
+  "no_module.mojom",
+  "ping_service.mojom",
+  "rect.mojom",
+  "regression_tests.mojom",
+  "sample_factory.mojom",
+  "sample_import.mojom",
+  "sample_import2.mojom",
+  "sample_interfaces.mojom",
+  "sample_service.mojom",
+  "scoping.mojom",
+  "serialization_test_structs.mojom",
+  "test_constants.mojom",
+  "test_native_types.mojom",
+  "test_structs.mojom",
+  "test_sync_methods.mojom",
+  "validation_test_interfaces.mojom",
+]
+
+mojom("test_interfaces") {
+  testonly = true
+  sources = test_interfaces_mojom
+}
+
+mojom("test_struct_traits_interfaces") {
+  testonly = true
+  sources = [
+    "struct_with_traits.mojom",
+  ]
+
+  typemaps = [ "struct_with_traits.typemap" ]
+}
+
+mojom("test_interfaces_experimental") {
+  testonly = true
+  sources = [
+    "test_unions.mojom",
+  ]
+}
+
+mojom("test_associated_interfaces") {
+  # These files are not included in the test_interfaces target because
+  # associated interfaces are not supported by all bindings languages yet.
+  testonly = true
+  sources = [
+    "test_associated_interfaces.mojom",
+    "validation_test_associated_interfaces.mojom",
+  ]
+}
+
+mojom("versioning_test_service_interfaces") {
+  testonly = true
+  sources = [
+    "versioning_test_service.mojom",
+  ]
+}
+
+mojom("versioning_test_client_interfaces") {
+  testonly = true
+  sources = [
+    "versioning_test_client.mojom",
+  ]
+}
+
+mojom("test_interfaces_chromium") {
+  testonly = true
+
+  sources = test_interfaces_mojom
+
+  variant = "chromium"
+  typemaps = [ "chromium_test.typemap" ]
+}
+
+mojom("test_interfaces_blink") {
+  testonly = true
+
+  sources = test_interfaces_mojom
+
+  variant = "blink"
+  typemaps = [ "blink_test.typemap" ]
+}
+
+mojom("test_wtf_types") {
+  testonly = true
+
+  sources = [
+    "test_wtf_types.mojom",
+  ]
+}
+
+mojom("test_wtf_types_blink") {
+  testonly = true
+
+  sources = [
+    "test_wtf_types.mojom",
+  ]
+
+  for_blink = true
+  variant = "blink"
+}
+
+mojom("test_variant") {
+  testonly = true
+
+  sources = [
+    "test_variant.mojom",
+    "test_variant_import.mojom",
+  ]
+
+  variant = "variant_test"
+}
