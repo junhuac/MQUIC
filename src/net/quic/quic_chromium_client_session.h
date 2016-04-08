@@ -180,7 +180,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   // QuicConnectionVisitorInterface methods:
   void OnConnectionClosed(QuicErrorCode error,
-                          const std::string& error_details,
                           ConnectionCloseSource source) override;
   void OnSuccessfulVersionNegotiation(const QuicVersion& version) override;
   void OnPathDegrading() override;

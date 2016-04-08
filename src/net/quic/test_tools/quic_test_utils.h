@@ -291,10 +291,8 @@ class MockConnectionVisitor : public QuicConnectionVisitorInterface {
   MOCK_METHOD1(OnBlockedFrame, void(const QuicBlockedFrame& frame));
   MOCK_METHOD1(OnRstStream, void(const QuicRstStreamFrame& frame));
   MOCK_METHOD1(OnGoAway, void(const QuicGoAwayFrame& frame));
-  MOCK_METHOD3(OnConnectionClosed,
-               void(QuicErrorCode error,
-                    const std::string& error_details,
-                    ConnectionCloseSource source));
+  MOCK_METHOD2(OnConnectionClosed,
+               void(QuicErrorCode error, ConnectionCloseSource source));
   MOCK_METHOD0(OnWriteBlocked, void());
   MOCK_METHOD0(OnCanWrite, void());
   MOCK_METHOD1(OnCongestionWindowChange, void(QuicTime now));
@@ -387,10 +385,8 @@ class MockConnection : public QuicConnection {
                     const IPEndPoint& peer_address,
                     const QuicReceivedPacket& packet));
   MOCK_METHOD1(SendConnectionClose, void(QuicErrorCode error));
-  MOCK_METHOD3(CloseConnection,
-               void(QuicErrorCode error,
-                    const std::string& details,
-                    ConnectionCloseBehavior connection_close_behavior));
+  MOCK_METHOD2(SendConnectionCloseWithDetails,
+               void(QuicErrorCode error, const std::string& details));
   MOCK_METHOD2(SendConnectionClosePacket,
                void(QuicErrorCode error, const std::string& details));
   MOCK_METHOD3(SendRstStream,
@@ -459,10 +455,8 @@ class MockQuicSpdySession : public QuicSpdySession {
   QuicCryptoStream* GetCryptoStream() override { return crypto_stream_.get(); }
 
   // From QuicSession.
-  MOCK_METHOD3(OnConnectionClosed,
-               void(QuicErrorCode error,
-                    const std::string& error_details,
-                    ConnectionCloseSource source));
+  MOCK_METHOD2(OnConnectionClosed,
+               void(QuicErrorCode error, ConnectionCloseSource source));
   MOCK_METHOD1(CreateIncomingDynamicStream, QuicSpdyStream*(QuicStreamId id));
   MOCK_METHOD1(CreateOutgoingDynamicStream,
                QuicSpdyStream*(SpdyPriority priority));

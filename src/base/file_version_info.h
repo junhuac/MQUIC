@@ -5,15 +5,18 @@
 #ifndef BASE_FILE_VERSION_INFO_H_
 #define BASE_FILE_VERSION_INFO_H_
 
-#include <string>
-
 #include "build/build_config.h"
-#include "base/base_export.h"
-#include "base/strings/string16.h"
 
 #if defined(OS_WIN)
 #include <windows.h>
-#endif
+// http://blogs.msdn.com/oldnewthing/archive/2004/10/25/247180.aspx
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+#endif  // OS_WIN
+
+#include <string>
+
+#include "base/base_export.h"
+#include "base/strings/string16.h"
 
 namespace base {
 class FilePath;
@@ -29,6 +32,17 @@ class FilePath;
 // version returns values from the Info.plist as appropriate. TODO(avi): make
 // this a less-obvious Windows-ism.
 
+#if defined(OS_WIN)
+// Creates a FileVersionInfo for the current module. Returns NULL in case of
+// error. The returned object should be deleted when you are done with it. This
+// is done as a macro to force inlining of __ImageBase. It used to be inside of
+// a method labeled with __forceinline, but inlining through __forceinline
+// stopped working for Debug builds in VS2013 (http://crbug.com/516359).
+#define CREATE_FILE_VERSION_INFO_FOR_CURRENT_MODULE() \
+    FileVersionInfo::CreateFileVersionInfoForModule( \
+        reinterpret_cast<HMODULE>(&__ImageBase))
+#endif
+
 class BASE_EXPORT FileVersionInfo {
  public:
   virtual ~FileVersionInfo() {}
@@ -43,6 +57,8 @@ class BASE_EXPORT FileVersionInfo {
 #if defined(OS_WIN)
   // Creates a FileVersionInfo for the specified module. Returns NULL in case
   // of error. The returned object should be deleted when you are done with it.
+  // See CREATE_FILE_VERSION_INFO_FOR_CURRENT_MODULE() helper above for a
+  // CreateFileVersionInfoForCurrentModule() alternative for Windows.
   static FileVersionInfo* CreateFileVersionInfoForModule(HMODULE module);
 #else
   // Creates a FileVersionInfo for the current module. Returns NULL in case

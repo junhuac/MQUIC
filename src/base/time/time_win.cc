@@ -33,6 +33,7 @@
 
 #include "base/time/time.h"
 
+#pragma comment(lib, "winmm.lib")
 #include <windows.h>
 #include <mmsystem.h>
 #include <stdint.h>
@@ -508,12 +509,6 @@ bool TimeTicks::IsHighResolution() {
   if (g_now_function == &InitialNowFunction)
     InitializeNowFunctionPointer();
   return g_now_function == &QPCNow;
-}
-
-// static
-TimeTicks::Clock TimeTicks::GetClock() {
-  return IsHighResolution() ?
-      Clock::WIN_QPC : Clock::WIN_ROLLOVER_PROTECTED_TIME_GET_TIME;
 }
 
 // static

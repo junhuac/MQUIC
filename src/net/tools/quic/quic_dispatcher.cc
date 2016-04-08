@@ -17,10 +17,10 @@
 #include "net/tools/quic/quic_simple_server_session.h"
 #include "net/tools/quic/quic_time_wait_list_manager.h"
 
-using base::StringPiece;
-using std::string;
-
 namespace net {
+
+using std::make_pair;
+using base::StringPiece;
 
 namespace {
 
@@ -283,9 +283,8 @@ bool QuicDispatcher::HasPendingWrites() const {
 void QuicDispatcher::Shutdown() {
   while (!session_map_.empty()) {
     QuicServerSessionBase* session = session_map_.begin()->second;
-    session->connection()->CloseConnection(
-        QUIC_PEER_GOING_AWAY, "Server shutdown imminent",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session->connection()->SendConnectionCloseWithDetails(
+        QUIC_PEER_GOING_AWAY, "Server shutdown imminent");
     // Validate that the session removes itself from the session map on close.
     DCHECK(session_map_.empty() || session_map_.begin()->second != session);
   }
@@ -293,8 +292,7 @@ void QuicDispatcher::Shutdown() {
 }
 
 void QuicDispatcher::OnConnectionClosed(QuicConnectionId connection_id,
-                                        QuicErrorCode error,
-                                        const string& error_details) {
+                                        QuicErrorCode error) {
   SessionMap::iterator it = session_map_.find(connection_id);
   if (it == session_map_.end()) {
     QUIC_BUG << "ConnectionId " << connection_id
@@ -306,8 +304,7 @@ void QuicDispatcher::OnConnectionClosed(QuicConnectionId connection_id,
 
   DVLOG_IF(1, error != QUIC_NO_ERROR)
       << "Closing connection (" << connection_id
-      << ") due to error: " << QuicUtils::ErrorToString(error)
-      << ", with details: " << error_details;
+      << ") due to error: " << QuicUtils::ErrorToString(error);
 
   if (closed_session_list_.empty()) {
     delete_sessions_alarm_->Cancel();

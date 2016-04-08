@@ -7,13 +7,9 @@
 #include <assert.h>
 #include <algorithm>
 
-#if 0
 #include "base/files/memory_mapped_file.h"
-#endif
 #include "base/logging.h"
-#if 0
 #include "base/memory/shared_memory.h"
-#endif
 #include "base/metrics/histogram_macros.h"
 
 namespace {
@@ -670,19 +666,14 @@ LocalPersistentMemoryAllocator::~LocalPersistentMemoryAllocator() {
 
 
 //----- SharedPersistentMemoryAllocator ----------------------------------------
-#if 0
 
 SharedPersistentMemoryAllocator::SharedPersistentMemoryAllocator(
-    std::unique_ptr<SharedMemory> memory,
+    scoped_ptr<SharedMemory> memory,
     uint64_t id,
     base::StringPiece name,
     bool read_only)
     : PersistentMemoryAllocator(static_cast<uint8_t*>(memory->memory()),
-                                memory->mapped_size(),
-                                0,
-                                id,
-                                name,
-                                read_only),
+                                memory->mapped_size(), 0, id, name, read_only),
       shared_memory_(std::move(memory)) {}
 
 SharedPersistentMemoryAllocator::~SharedPersistentMemoryAllocator() {}
@@ -697,15 +688,11 @@ bool SharedPersistentMemoryAllocator::IsSharedMemoryAcceptable(
 //----- FilePersistentMemoryAllocator ------------------------------------------
 
 FilePersistentMemoryAllocator::FilePersistentMemoryAllocator(
-    std::unique_ptr<MemoryMappedFile> file,
+    scoped_ptr<MemoryMappedFile> file,
     uint64_t id,
     base::StringPiece name)
     : PersistentMemoryAllocator(const_cast<uint8_t*>(file->data()),
-                                file->length(),
-                                0,
-                                id,
-                                name,
-                                true),
+                                file->length(), 0, id, name, true),
       mapped_file_(std::move(file)) {}
 
 FilePersistentMemoryAllocator::~FilePersistentMemoryAllocator() {}
@@ -715,6 +702,5 @@ bool FilePersistentMemoryAllocator::IsFileAcceptable(
     const MemoryMappedFile& file) {
   return IsMemoryAcceptable(file.data(), file.length(), 0, true);
 }
-#endif
 
 }  // namespace base

@@ -20,7 +20,6 @@
 using base::IntToString;
 using base::StringPiece;
 using net::SpdyHeaderBlock;
-using std::list;
 using std::string;
 
 namespace net {
@@ -117,7 +116,7 @@ TEST_F(QuicInMemoryCacheTest, ReadsCacheDirWithServerPushResource) {
   QuicInMemoryCache::GetInstance()->InitializeFromDirectory(CacheDirectory() +
                                                             "_with_push");
   QuicInMemoryCache* cache = QuicInMemoryCache::GetInstance();
-  list<ServerPushInfo> resources =
+  std::list<ServerPushInfo> resources =
       cache->GetServerPushResources("quic.test.url/");
   ASSERT_EQ(1UL, resources.size());
 }
@@ -126,7 +125,7 @@ TEST_F(QuicInMemoryCacheTest, ReadsCacheDirWithServerPushResources) {
   QuicInMemoryCache::GetInstance()->InitializeFromDirectory(CacheDirectory() +
                                                             "_with_push");
   QuicInMemoryCache* cache = QuicInMemoryCache::GetInstance();
-  list<ServerPushInfo> resources =
+  std::list<ServerPushInfo> resources =
       cache->GetServerPushResources("quic.test.url/index2.html");
   ASSERT_EQ(2UL, resources.size());
 }
@@ -205,7 +204,8 @@ TEST_F(QuicInMemoryCacheTest, AddSimpleResponseWithServerPushResources) {
   cache->AddSimpleResponseWithServerPushResources(
       request_host, "/", 200, response_body, push_resources);
   string request_url = request_host + "/";
-  list<ServerPushInfo> resources = cache->GetServerPushResources(request_url);
+  std::list<ServerPushInfo> resources =
+      cache->GetServerPushResources(request_url);
   ASSERT_EQ(kNumResources, resources.size());
   for (const auto& push_resource : push_resources) {
     ServerPushInfo resource = resources.front();
@@ -239,7 +239,8 @@ TEST_F(QuicInMemoryCacheTest, GetServerPushResourcesAndPushResponses) {
   cache->AddSimpleResponseWithServerPushResources(
       request_host, "/", 200, response_body, push_resources);
   string request_url = request_host + "/";
-  list<ServerPushInfo> resources = cache->GetServerPushResources(request_url);
+  std::list<ServerPushInfo> resources =
+      cache->GetServerPushResources(request_url);
   ASSERT_EQ(kNumResources, resources.size());
   int i = 0;
   for (const auto& push_resource : push_resources) {

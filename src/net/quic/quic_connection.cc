@@ -20,7 +20,6 @@
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/stl_util.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
 #include "net/base/address_family.h"
 #include "net/base/ip_address.h"
@@ -224,8 +223,6 @@ QuicConnection::QuicConnection(QuicConnectionId connection_id,
       random_generator_(helper->GetRandomGenerator()),
       connection_id_(connection_id),
       peer_address_(address),
-      active_peer_migration_type_(NO_CHANGE),
-      highest_packet_sent_before_peer_migration_(0),
       last_packet_decrypted_(false),
       last_size_(0),
       current_packet_data_(nullptr),
@@ -236,8 +233,7 @@ QuicConnection::QuicConnection(QuicConnectionId connection_id,
       max_undecryptable_packets_(0),
       pending_version_negotiation_packet_(false),
       save_crypto_packets_as_termination_packets_(false),
-      idle_timeout_connection_close_behavior_(
-          ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET),
+      silent_close_enabled_(false),
       close_connection_after_five_rtos_(false),
       received_packet_manager_(&stats_),
       ack_queued_(false),
@@ -336,8 +332,7 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
     SetNetworkTimeouts(QuicTime::Delta::Infinite(),
                        config.IdleConnectionStateLifetime());
     if (config.SilentClose()) {
-      idle_timeout_connection_close_behavior_ =
-          ConnectionCloseBehavior::SILENT_CLOSE;
+      silent_close_enabled_ = true;
     }
     if (FLAGS_quic_enable_multipath && config.MultipathEnabled()) {
       multipath_enabled_ = true;
@@ -425,8 +420,7 @@ void QuicConnection::OnError(QuicFramer* framer) {
   if (!connected_ || last_packet_decrypted_ == false) {
     return;
   }
-  CloseConnection(framer->error(), framer->detailed_error(),
-                  ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+  SendConnectionCloseWithDetails(framer->error(), framer->detailed_error());
 }
 
 void QuicConnection::OnPacket() {
@@ -441,10 +435,10 @@ void QuicConnection::OnPublicResetPacket(const QuicPublicResetPacket& packet) {
   if (debug_visitor_ != nullptr) {
     debug_visitor_->OnPublicResetPacket(packet);
   }
-  const string error_details = "Received public reset.";
-  DVLOG(1) << ENDPOINT << error_details;
-  TearDownLocalConnectionState(QUIC_PUBLIC_RESET, error_details,
-                               ConnectionCloseSource::FROM_PEER);
+  CloseConnection(QUIC_PUBLIC_RESET, ConnectionCloseSource::FROM_PEER);
+
+  DVLOG(1) << ENDPOINT << "Connection " << connection_id()
+           << " closed via QUIC_PUBLIC_RESET from peer.";
 }
 
 bool QuicConnection::OnProtocolVersionMismatch(QuicVersion received_version) {
@@ -452,10 +446,9 @@ bool QuicConnection::OnProtocolVersionMismatch(QuicVersion received_version) {
            << received_version;
   // TODO(satyamshekhar): Implement no server state in this mode.
   if (perspective_ == Perspective::IS_CLIENT) {
-    const string error_details = "Protocol version mismatch.";
-    QUIC_BUG << ENDPOINT << error_details;
-    TearDownLocalConnectionState(QUIC_INTERNAL_ERROR, error_details,
-                                 ConnectionCloseSource::FROM_SELF);
+    QUIC_BUG << ENDPOINT << "Framer called OnProtocolVersionMismatch. "
+             << "Closing connection.";
+    CloseConnection(QUIC_INTERNAL_ERROR, ConnectionCloseSource::FROM_SELF);
     return false;
   }
   DCHECK_NE(version(), received_version);
@@ -513,10 +506,9 @@ void QuicConnection::OnVersionNegotiationPacket(
   // here.  (Check for a bug regression.)
   DCHECK_EQ(connection_id_, packet.connection_id);
   if (perspective_ == Perspective::IS_SERVER) {
-    const string error_details = "Server receieved version negotiation packet.";
-    QUIC_BUG << error_details;
-    TearDownLocalConnectionState(QUIC_INTERNAL_ERROR, error_details,
-                                 ConnectionCloseSource::FROM_SELF);
+    QUIC_BUG << ENDPOINT << "Framer parsed VersionNegotiationPacket."
+             << " Closing connection.";
+    CloseConnection(QUIC_INTERNAL_ERROR, ConnectionCloseSource::FROM_SELF);
     return;
   }
   if (debug_visitor_ != nullptr) {
@@ -529,19 +521,17 @@ void QuicConnection::OnVersionNegotiationPacket(
   }
 
   if (ContainsValue(packet.versions, version())) {
-    const string error_details =
-        "Server already supports client's version and should have accepted the "
-        "connection.";
-    DLOG(WARNING) << error_details;
-    TearDownLocalConnectionState(QUIC_INVALID_VERSION_NEGOTIATION_PACKET,
-                                 error_details,
-                                 ConnectionCloseSource::FROM_SELF);
+    DLOG(WARNING) << ENDPOINT << "The server already supports our version. "
+                  << "It should have accepted our connection.";
+    // Just drop the connection.
+    CloseConnection(QUIC_INVALID_VERSION_NEGOTIATION_PACKET,
+                    ConnectionCloseSource::FROM_SELF);
     return;
   }
 
   if (!SelectMutualVersion(packet.versions)) {
-    CloseConnection(QUIC_INVALID_VERSION, "No common version found.",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_INVALID_VERSION,
+                                   "no common version found");
     return;
   }
 
@@ -583,21 +573,18 @@ bool QuicConnection::OnUnauthenticatedHeader(const QuicPacketHeader& header) {
 
   // Multipath is not enabled, but a packet with multipath flag on is received.
   if (!multipath_enabled_ && header.public_header.multipath_flag) {
-    const string error_details =
-        "Received a packet with multipath flag but multipath is not enabled.";
-    QUIC_BUG << error_details;
-    CloseConnection(QUIC_BAD_MULTIPATH_FLAG, error_details,
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    LOG(DFATAL) << "Received a packet with multipath flag on when multipath is "
+                   "not enabled.";
+    SendConnectionCloseWithDetails(QUIC_BAD_MULTIPATH_FLAG,
+                                   "receive a packet with multipath flag on "
+                                   "when multipath is not enabled.");
     return false;
   }
   if (!packet_generator_.IsPendingPacketEmpty()) {
-    // Incoming packets may change a queued ACK frame.
-    const string error_details =
-        "Pending frames must be serialized before incoming packets are "
-        "processed.";
-    QUIC_BUG << error_details;
-    CloseConnection(QUIC_INTERNAL_ERROR, error_details,
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    QUIC_BUG << "Pending frames must be serialized before incoming packets are "
+             << "processed, because that may change a queued ack frame.";
+    SendConnectionCloseWithDetails(QUIC_INTERNAL_ERROR,
+                                   "Should not process packets while sending.");
     return false;
   }
 
@@ -639,14 +626,7 @@ bool QuicConnection::OnPacketHeader(const QuicPacketHeader& header) {
     return false;
   }
 
-  // Only migrate connection to a new peer address if a change is not underway.
-  PeerAddressChangeType peer_migration_type =
-      QuicUtils::DetermineAddressChangeType(peer_address_,
-                                            last_packet_source_address_);
-  if (active_peer_migration_type_ == NO_CHANGE &&
-      peer_migration_type != NO_CHANGE) {
-    StartPeerMigration(peer_migration_type);
-  }
+  MaybeMigrateConnectionToNewPeerAddress();
 
   --stats_.packets_dropped;
   DVLOG(1) << ENDPOINT << "Received packet header: " << header;
@@ -667,9 +647,8 @@ bool QuicConnection::OnStreamFrame(const QuicStreamFrame& frame) {
              << " packet_number:" << last_header_.packet_number
              << " stream_id:" << frame.stream_id
              << " received_packets:" << received_packet_manager_.ack_frame();
-    CloseConnection(QUIC_UNENCRYPTED_STREAM_DATA,
-                    "Unencrypted stream data seen.",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_UNENCRYPTED_STREAM_DATA,
+                                   "Unencrypted stream data seen");
     return false;
   }
   visitor_->OnStreamFrame(frame);
@@ -693,8 +672,7 @@ bool QuicConnection::OnAckFrame(const QuicAckFrame& incoming_ack) {
 
   const char* error = ValidateAckFrame(incoming_ack);
   if (error != nullptr) {
-    CloseConnection(QUIC_INVALID_ACK_DATA, error,
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_INVALID_ACK_DATA, error);
     return false;
   }
 
@@ -745,8 +723,7 @@ bool QuicConnection::OnStopWaitingFrame(const QuicStopWaitingFrame& frame) {
 
   const char* error = ValidateStopWaitingFrame(frame);
   if (error != nullptr) {
-    CloseConnection(QUIC_INVALID_STOP_WAITING_DATA, error,
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_INVALID_STOP_WAITING_DATA, error);
     return false;
   }
 
@@ -773,7 +750,7 @@ const char* QuicConnection::ValidateAckFrame(const QuicAckFrame& incoming_ack) {
                  << incoming_ack.largest_observed << " vs "
                  << packet_generator_.packet_number();
     // We got an error for data we have not sent.  Error out.
-    return "Largest observed too high.";
+    return "Largest observed too high";
   }
 
   if (incoming_ack.largest_observed < sent_packet_manager_.largest_observed()) {
@@ -785,7 +762,7 @@ const char* QuicConnection::ValidateAckFrame(const QuicAckFrame& incoming_ack) {
                  << " connection_id: " << connection_id_;
     // A new ack has a diminished largest_observed value.  Error out.
     // If this was an old packet, we wouldn't even have checked.
-    return "Largest observed too low.";
+    return "Largest observed too low";
   }
 
   if (!incoming_ack.missing_packets.Empty() &&
@@ -794,7 +771,7 @@ const char* QuicConnection::ValidateAckFrame(const QuicAckFrame& incoming_ack) {
                  << incoming_ack.missing_packets.Max()
                  << " which is greater than largest observed: "
                  << incoming_ack.largest_observed;
-    return "Missing packet higher than largest observed.";
+    return "Missing packet higher than largest observed";
   }
 
   if (!incoming_ack.missing_packets.Empty() &&
@@ -804,7 +781,7 @@ const char* QuicConnection::ValidateAckFrame(const QuicAckFrame& incoming_ack) {
                  << incoming_ack.missing_packets.Min()
                  << " which is smaller than least_packet_awaited_by_peer_: "
                  << sent_packet_manager_.least_packet_awaited_by_peer();
-    return "Missing packet smaller than least awaited.";
+    return "Missing packet smaller than least awaited";
   }
 
   if (!sent_entropy_manager_.IsValidEntropy(incoming_ack.largest_observed,
@@ -813,7 +790,7 @@ const char* QuicConnection::ValidateAckFrame(const QuicAckFrame& incoming_ack) {
     LOG(WARNING) << ENDPOINT << "Peer sent invalid entropy."
                  << " largest_observed:" << incoming_ack.largest_observed
                  << " last_received:" << last_header_.packet_number;
-    return "Invalid entropy.";
+    return "Invalid entropy";
   }
 
   return nullptr;
@@ -827,7 +804,7 @@ const char* QuicConnection::ValidateStopWaitingFrame(
                 << stop_waiting.least_unacked << " vs "
                 << received_packet_manager_.peer_least_packet_awaiting_ack();
     // We never process old ack frames, so this number should only increase.
-    return "Least unacked too small.";
+    return "Least unacked too small";
   }
 
   if (stop_waiting.least_unacked > last_header_.packet_number) {
@@ -835,7 +812,7 @@ const char* QuicConnection::ValidateStopWaitingFrame(
                 << "Peer sent least_unacked:" << stop_waiting.least_unacked
                 << " greater than the enclosing packet number:"
                 << last_header_.packet_number;
-    return "Least unacked too large.";
+    return "Least unacked too large";
   }
 
   return nullptr;
@@ -862,14 +839,11 @@ bool QuicConnection::OnConnectionCloseFrame(
   if (debug_visitor_ != nullptr) {
     debug_visitor_->OnConnectionCloseFrame(frame);
   }
-  const string error_details =
-      StringPrintf("CONNECTION_CLOSE_FRAME received for connection: %" PRIu64
-                   " with error: %s %s",
-                   connection_id(), QuicUtils::ErrorToString(frame.error_code),
-                   frame.error_details.c_str());
-  DVLOG(1) << ENDPOINT << error_details;
-  TearDownLocalConnectionState(frame.error_code, error_details,
-                               ConnectionCloseSource::FROM_PEER);
+  DVLOG(1) << ENDPOINT << "CONNECTION_CLOSE_FRAME received for connection: "
+           << connection_id()
+           << " with error: " << QuicUtils::ErrorToString(frame.error_code)
+           << " " << frame.error_details;
+  CloseConnection(frame.error_code, ConnectionCloseSource::FROM_PEER);
   return connected_;
 }
 
@@ -1039,18 +1013,16 @@ void QuicConnection::MaybeCloseIfTooManyOutstandingPackets() {
   // It's possible largest observed is less than least unacked.
   if (sent_packet_manager_.largest_observed() >
       (sent_packet_manager_.GetLeastUnacked() + kMaxTrackedPackets)) {
-    CloseConnection(
+    SendConnectionCloseWithDetails(
         QUIC_TOO_MANY_OUTSTANDING_SENT_PACKETS,
-        StringPrintf("More than %" PRIu64 " outstanding.", kMaxTrackedPackets),
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+        StringPrintf("More than %" PRIu64 " outstanding.", kMaxTrackedPackets));
   }
   // This occurs if there are received packet gaps and the peer does not raise
   // the least unacked fast enough.
   if (received_packet_manager_.NumTrackedPackets() > kMaxTrackedPackets) {
-    CloseConnection(
+    SendConnectionCloseWithDetails(
         QUIC_TOO_MANY_OUTSTANDING_RECEIVED_PACKETS,
-        StringPrintf("More than %" PRIu64 " outstanding.", kMaxTrackedPackets),
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+        StringPrintf("More than %" PRIu64 " outstanding.", kMaxTrackedPackets));
   }
 }
 
@@ -1277,11 +1249,6 @@ void QuicConnection::ProcessUdpPacket(const IPEndPoint& self_address,
   }
 
   ++stats_.packets_processed;
-  if (active_peer_migration_type_ != NO_CHANGE &&
-      sent_packet_manager_.largest_observed() >
-          highest_packet_sent_before_peer_migration_) {
-    OnPeerMigrationValidated();
-  }
   MaybeProcessUndecryptablePackets();
   MaybeSendInResponseToPacket();
   SetPingAlarm();
@@ -1342,17 +1309,17 @@ bool QuicConnection::ProcessValidatedPacket(const QuicPacketHeader& header) {
       IsInitializedIPEndPoint(self_address_) &&
       IsInitializedIPEndPoint(last_packet_destination_address_) &&
       (!(self_address_ == last_packet_destination_address_))) {
-    CloseConnection(QUIC_ERROR_MIGRATING_ADDRESS,
-                    "Self address migration is not supported at the server.",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(
+        QUIC_ERROR_MIGRATING_ADDRESS,
+        "Self address migration is not supported at the server.");
     return false;
   }
 
   if (!Near(header.packet_number, last_header_.packet_number)) {
     DVLOG(1) << ENDPOINT << "Packet " << header.packet_number
              << " out of bounds.  Discarding";
-    CloseConnection(QUIC_INVALID_PACKET_HEADER, "packet number out of bounds.",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_INVALID_PACKET_HEADER,
+                                   "packet number out of bounds");
     return false;
   }
 
@@ -1366,8 +1333,7 @@ bool QuicConnection::ProcessValidatedPacket(const QuicPacketHeader& header) {
                          " without version flag before version negotiated.",
                          ENDPOINT, header.packet_number);
         DLOG(WARNING) << error_details;
-        CloseConnection(QUIC_INVALID_VERSION, error_details,
-                        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+        SendConnectionCloseWithDetails(QUIC_INVALID_VERSION, error_details);
         return false;
       } else {
         DCHECK_EQ(1u, header.public_header.versions.size());
@@ -1517,8 +1483,8 @@ bool QuicConnection::WritePacket(SerializedPacket* packet) {
   if (packet->packet_number < sent_packet_manager_.largest_sent_packet()) {
     QUIC_BUG << "Attempt to write packet:" << packet->packet_number
              << " after:" << sent_packet_manager_.largest_sent_packet();
-    CloseConnection(QUIC_INTERNAL_ERROR, "Packet written out of order.",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_INTERNAL_ERROR,
+                                   "Packet written out of order.");
     return true;
   }
   if (ShouldDiscardPacket(*packet)) {
@@ -1672,38 +1638,30 @@ bool QuicConnection::ShouldDiscardPacket(const SerializedPacket& packet) {
 }
 
 void QuicConnection::OnWriteError(int error_code) {
-  const string error_details = "Write failed with error: " +
-                               base::IntToString(error_code) + " (" +
-                               ErrorToString(error_code) + ")";
-  DVLOG(1) << ENDPOINT << error_details;
+  DVLOG(1) << ENDPOINT << "Write failed with error: " << error_code << " ("
+           << ErrorToString(error_code) << ")";
   // We can't send an error as the socket is presumably borked.
-  TearDownLocalConnectionState(QUIC_PACKET_WRITE_ERROR, error_details,
-                               ConnectionCloseSource::FROM_SELF);
+  CloseConnection(QUIC_PACKET_WRITE_ERROR, ConnectionCloseSource::FROM_SELF);
 }
 
 void QuicConnection::OnSerializedPacket(SerializedPacket* serialized_packet) {
   DCHECK_NE(kInvalidPathId, serialized_packet->path_id);
   if (serialized_packet->encrypted_buffer == nullptr) {
     // We failed to serialize the packet, so close the connection.
-    // TearDownLocalConnectionState does not send close packet, so no infinite
-    // loop here.
-    // TODO(ianswett): This is actually an internal error, not an
-    // encryption failure.
-    TearDownLocalConnectionState(
-        QUIC_ENCRYPTION_FAILURE,
-        "Serialized packet does not have an encrypted buffer.",
-        ConnectionCloseSource::FROM_SELF);
+    // CloseConnection does not send close packet, so no infinite loop here.
+    // TODO(ianswett): This is actually an internal error, not an encryption
+    // failure.
+    CloseConnection(QUIC_ENCRYPTION_FAILURE, ConnectionCloseSource::FROM_SELF);
     return;
   }
   SendOrQueuePacket(serialized_packet);
 }
 
 void QuicConnection::OnUnrecoverableError(QuicErrorCode error,
-                                          const string& error_details,
                                           ConnectionCloseSource source) {
   // The packet creator or generator encountered an unrecoverable error: tear
   // down local connection state immediately.
-  TearDownLocalConnectionState(error, error_details, source);
+  CloseConnection(error, source);
 }
 
 void QuicConnection::OnCongestionWindowChange() {
@@ -1798,8 +1756,8 @@ void QuicConnection::OnRetransmissionTimeout() {
   if (close_connection_after_five_rtos_ &&
       sent_packet_manager_.consecutive_rto_count() >= 4) {
     // Close on the 5th consecutive RTO, so after 4 previous RTOs have occurred.
-    CloseConnection(QUIC_TOO_MANY_RTOS, "5 consecutive retransmission timeouts",
-                    ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    SendConnectionCloseWithDetails(QUIC_TOO_MANY_RTOS,
+                                   "5 consecutive retransmission timeouts");
     return;
   }
 
@@ -1909,32 +1867,23 @@ void QuicConnection::MaybeProcessUndecryptablePackets() {
   }
 }
 
-void QuicConnection::CloseConnection(
-    QuicErrorCode error,
-    const string& error_details,
-    ConnectionCloseBehavior connection_close_behavior) {
-  DCHECK(!error_details.empty());
+void QuicConnection::SendConnectionCloseWithDetails(QuicErrorCode error,
+                                                    const string& details) {
   if (!connected_) {
     DVLOG(1) << "Connection is already closed.";
     return;
   }
-
-  DVLOG(1) << ENDPOINT << "Closing connection: " << connection_id()
-           << ", with error: " << QuicUtils::ErrorToString(error) << " ("
-           << error << "), and details:  " << error_details;
-
-  if (connection_close_behavior ==
-      ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET) {
-    SendConnectionClosePacket(error, error_details);
-  }
-
-  TearDownLocalConnectionState(error, error_details,
-                               ConnectionCloseSource::FROM_SELF);
+  // If we're write blocked, WritePacket() will not send, but will capture the
+  // serialized packet.
+  SendConnectionClosePacket(error, details);
+  CloseConnection(error, ConnectionCloseSource::FROM_SELF);
 }
 
 void QuicConnection::SendConnectionClosePacket(QuicErrorCode error,
                                                const string& details) {
-  DVLOG(1) << ENDPOINT << "Sending connection close packet.";
+  DVLOG(1) << ENDPOINT << "Force closing " << connection_id() << " with error "
+           << QuicUtils::ErrorToString(error) << " (" << error << ") "
+           << details;
   ClearQueuedPackets();
   ScopedPacketBundler ack_bundler(this, SEND_ACK);
   QuicConnectionCloseFrame* frame = new QuicConnectionCloseFrame();
@@ -1944,10 +1893,8 @@ void QuicConnection::SendConnectionClosePacket(QuicErrorCode error,
   packet_generator_.FlushAllQueuedFrames();
 }
 
-void QuicConnection::TearDownLocalConnectionState(
-    QuicErrorCode error,
-    const string& error_details,
-    ConnectionCloseSource source) {
+void QuicConnection::CloseConnection(QuicErrorCode error,
+                                     ConnectionCloseSource source) {
   if (!connected_) {
     DVLOG(1) << "Connection is already closed.";
     return;
@@ -1958,12 +1905,12 @@ void QuicConnection::TearDownLocalConnectionState(
   // |visitor_| to fix crash bug. Delete |visitor_| check and histogram after
   // fix is merged.
   if (visitor_ != nullptr) {
-    visitor_->OnConnectionClosed(error, error_details, source);
+    visitor_->OnConnectionClosed(error, source);
   } else {
     UMA_HISTOGRAM_BOOLEAN("Net.QuicCloseConnection.NullVisitor", true);
   }
   if (debug_visitor_ != nullptr) {
-    debug_visitor_->OnConnectionClosed(error, error_details, source);
+    debug_visitor_->OnConnectionClosed(error, source);
   }
   // Cancel the alarms so they don't trigger any action now that the
   // connection is closed.
@@ -2060,10 +2007,15 @@ void QuicConnection::CheckForTimeout() {
            << " idle_network_timeout: "
            << idle_network_timeout_.ToMicroseconds();
   if (idle_duration >= idle_network_timeout_) {
-    const string error_details = "No recent network activity.";
-    DVLOG(1) << ENDPOINT << error_details;
-    CloseConnection(QUIC_NETWORK_IDLE_TIMEOUT, error_details,
-                    idle_timeout_connection_close_behavior_);
+    DVLOG(1) << ENDPOINT << "Connection timedout due to no network activity.";
+    if (silent_close_enabled_) {
+      // Just clean up local state, don't send a connection close packet.
+      CloseConnection(QUIC_NETWORK_IDLE_TIMEOUT,
+                      ConnectionCloseSource::FROM_SELF);
+    } else {
+      SendConnectionCloseWithDetails(QUIC_NETWORK_IDLE_TIMEOUT,
+                                     "No recent network activity");
+    }
     return;
   }
 
@@ -2074,10 +2026,9 @@ void QuicConnection::CheckForTimeout() {
              << "connection time: " << connected_duration.ToMicroseconds()
              << " handshake timeout: " << handshake_timeout_.ToMicroseconds();
     if (connected_duration >= handshake_timeout_) {
-      const string error_details = "Handshake timeout expired.";
-      DVLOG(1) << ENDPOINT << error_details;
-      CloseConnection(QUIC_HANDSHAKE_TIMEOUT, error_details,
-                      ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+      DVLOG(1) << ENDPOINT << "Connection timedout due to handshake timeout.";
+      SendConnectionCloseWithDetails(QUIC_HANDSHAKE_TIMEOUT,
+                                     "Handshake timeout expired");
       return;
     }
   }
@@ -2309,43 +2260,27 @@ void QuicConnection::DiscoverMtu() {
   DCHECK(!mtu_discovery_alarm_->IsSet());
 }
 
-void QuicConnection::OnPeerMigrationValidated() {
-  if (active_peer_migration_type_ == NO_CHANGE) {
-    QUIC_BUG << "No migration underway.";
-    return;
-  }
-  highest_packet_sent_before_peer_migration_ = 0;
-  active_peer_migration_type_ = NO_CHANGE;
-}
-
-// TODO(jri): Modify method to start migration whenever a new IP address is seen
-// from a packet with sequence number > the one that triggered the previous
-// migration. This should happen even if a migration is underway, since the
-// most recent migration is the one that we should pay attention to.
-void QuicConnection::StartPeerMigration(
-    PeerAddressChangeType peer_migration_type) {
+void QuicConnection::MaybeMigrateConnectionToNewPeerAddress() {
+  IPEndPoint last_peer_address;
+  last_peer_address = last_packet_source_address_;
+  PeerAddressChangeType peer_address_change_type =
+      QuicUtils::DetermineAddressChangeType(peer_address_, last_peer_address);
   // TODO(fayang): Currently, all peer address change type are allowed. Need to
   // add a method ShouldAllowPeerAddressChange(PeerAddressChangeType type) to
   // determine whether |type| is allowed.
-  if (active_peer_migration_type_ != NO_CHANGE ||
-      peer_migration_type == NO_CHANGE) {
-    QUIC_BUG << "Migration underway or no new migration started.";
+  if (peer_address_change_type == NO_CHANGE) {
     return;
   }
+
+  IPEndPoint old_peer_address = peer_address_;
+  peer_address_ = last_packet_source_address_;
+
   DVLOG(1) << ENDPOINT << "Peer's ip:port changed from "
-           << peer_address_.ToString() << " to "
-           << last_packet_source_address_.ToString()
+           << old_peer_address.ToString() << " to " << peer_address_.ToString()
            << ", migrating connection.";
 
-  highest_packet_sent_before_peer_migration_ =
-      packet_number_of_last_sent_packet_;
-  peer_address_ = last_packet_source_address_;
-  active_peer_migration_type_ = peer_migration_type;
-
-  // TODO(jri): Move these calls to OnPeerMigrationValidated. Rename
-  // OnConnectionMigration methods to OnPeerMigration.
-  visitor_->OnConnectionMigration(peer_migration_type);
-  sent_packet_manager_.OnConnectionMigration(peer_migration_type);
+  visitor_->OnConnectionMigration(peer_address_change_type);
+  sent_packet_manager_.OnConnectionMigration(peer_address_change_type);
 }
 
 void QuicConnection::OnPathClosed(QuicPathId path_id) {

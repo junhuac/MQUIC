@@ -8,10 +8,13 @@
 #include <stddef.h>
 
 #include <map>
+#include <string>
 
 #include "base/macros.h"
 #include "net/quic/quic_protocol.h"
 #include "net/quic/quic_stream_sequencer_buffer.h"
+
+using std::string;
 
 namespace net {
 

@@ -19,7 +19,6 @@ using std::make_pair;
 using std::max;
 using std::min;
 using std::pair;
-using std::string;
 using std::vector;
 
 namespace net {
@@ -330,10 +329,8 @@ void QuicPacketCreator::Flush() {
 
 void QuicPacketCreator::OnSerializedPacket() {
   if (packet_.encrypted_buffer == nullptr) {
-    const string error_details = "Failed to SerializePacket.";
-    QUIC_BUG << error_details;
+    QUIC_BUG << "Failed to SerializePacket.";
     delegate_->OnUnrecoverableError(QUIC_FAILED_TO_SERIALIZE_PACKET,
-                                    error_details,
                                     ConnectionCloseSource::FROM_SELF);
     return;
   }
@@ -523,11 +520,9 @@ bool QuicPacketCreator::AddFrame(const QuicFrame& frame,
   if (FLAGS_quic_never_write_unencrypted_data && frame.type == STREAM_FRAME &&
       frame.stream_frame->stream_id != kCryptoStreamId &&
       packet_.encryption_level == ENCRYPTION_NONE) {
-    const string error_details = "Cannot send stream data without encryption.";
-    QUIC_BUG << error_details;
-    delegate_->OnUnrecoverableError(
-        QUIC_ATTEMPT_TO_SEND_UNENCRYPTED_STREAM_DATA, error_details,
-        ConnectionCloseSource::FROM_SELF);
+    QUIC_BUG << "Cannot send stream data without encryption.";
+    delegate_->OnUnrecoverableError(QUIC_UNENCRYPTED_STREAM_DATA,
+                                    ConnectionCloseSource::FROM_SELF);
     return false;
   }
   MaybeUpdatePacketNumberLength();

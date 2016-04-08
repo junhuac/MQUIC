@@ -152,7 +152,6 @@
         }],
         ['use_aura==1', {
           'dependencies': [
-            '../ui/aura/aura.gyp:aura_bench',
             '../ui/aura/aura.gyp:aura_demo',
             '../ui/aura/aura.gyp:aura_unittests',
             '../ui/keyboard/keyboard.gyp:keyboard_unittests',
@@ -253,6 +252,9 @@
         }],
         ['OS=="android" and chromecast==0', {
           'dependencies': [
+            '../android_webview/android_webview_shell.gyp:system_webview_shell_apk',
+            '../android_webview/android_webview_shell.gyp:system_webview_shell_layout_test_apk',
+            '../android_webview/android_webview_shell.gyp:system_webview_shell_page_cycler_apk',
             '../chrome/android/chrome_apk.gyp:chrome_public_apk',
             '../chrome/android/chrome_apk.gyp:chrome_public_test_apk',
             '../chrome/android/chrome_apk.gyp:chrome_sync_shell_apk',
@@ -480,9 +482,6 @@
             #"//chrome/test:sync_integration_tests",  # TODO(GYP)
             #"//chrome/test:unit_tests",  # TODO(GYP)
             #"//components:components_unittests",  # TODO(GYP)
-            #"//content/test:content_browsertests",  # TODO(GYP)
-            #"//content/test:content_perftests",  # TODO(GYP)
-            #"//content/test:content_unittests",  # TODO(GYP)
             #"//extensions:extensions_browsertests",  # TODO(GYP)
             #"//extensions:extensions_unittests",  # TODO(GYP)
             #"//net:net_unittests",  # TODO(GYP)
@@ -534,11 +533,6 @@
       'target_name': 'gyp_remaining',
       'type': 'none',
       'conditions': [
-        ['remoting==1', {
-          'dependencies': [
-            '../remoting/app_remoting_webapp.gyp:ar_sample_app',  # crbug.com/471916
-          ],
-        }],
         ['test_isolation_mode!="noop"', {
           'dependencies': [
             '../base/base.gyp:base_unittests_run',
@@ -584,6 +578,7 @@
             '../ui/accessibility/accessibility.gyp:accessibility_unittests_run',
             '../ui/app_list/app_list.gyp:app_list_unittests_run',
             '../ui/compositor/compositor.gyp:compositor_unittests_run',
+            '../ui/display/display.gyp:display_unittests_run',
             '../ui/events/events_unittests.gyp:events_unittests_run',
             '../ui/gfx/gfx_tests.gyp:gfx_unittests_run',
             '../ui/message_center/message_center.gyp:message_center_unittests_run',
@@ -593,7 +588,6 @@
             ['OS=="linux"', {
               'dependencies': [
                 '../sandbox/sandbox.gyp:sandbox_linux_unittests_run',
-                '../ui/display/display.gyp:display_unittests_run',
               ],
             }],
             ['OS=="mac"', {
@@ -771,9 +765,6 @@
             '../android_webview/android_webview.gyp:android_webview_test_apk',
             '../android_webview/android_webview.gyp:android_webview_unittests',
             '../android_webview/android_webview.gyp:android_webview_unittests_apk',
-            '../android_webview/android_webview_shell.gyp:system_webview_shell_apk',
-            '../android_webview/android_webview_shell.gyp:system_webview_shell_layout_test_apk',
-            '../android_webview/android_webview_shell.gyp:system_webview_shell_page_cycler_apk',
           ],
         }],
         ['OS=="android" and chromecast==0 and use_webview_internal_framework==0', {

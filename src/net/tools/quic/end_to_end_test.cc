@@ -4,8 +4,6 @@
 
 #include <stddef.h>
 #include <sys/epoll.h>
-
-#include <list>
 #include <string>
 #include <vector>
 
@@ -1674,7 +1672,7 @@ class TestResponseListener : public QuicClient::ResponseListener {
   void OnCompleteResponse(QuicStreamId id,
                           const BalsaHeaders& response_headers,
                           const string& response_body) override {
-    string debug_string;
+    std::string debug_string;
     response_headers.DumpHeadersToString(&debug_string);
     DVLOG(1) << "response for stream " << id << " " << debug_string << "\n"
              << response_body;
@@ -2196,7 +2194,7 @@ class EndToEndTestServerPush : public EndToEndTest {
       // push response.
       test::GenerateBody(&large_resource, resource_size);
     }
-    std::list<QuicInMemoryCache::ServerPushInfo> push_resources;
+    list<QuicInMemoryCache::ServerPushInfo> push_resources;
     for (size_t i = 0; i < num_resources; ++i) {
       string url = push_urls[i];
       GURL resource_url(url);

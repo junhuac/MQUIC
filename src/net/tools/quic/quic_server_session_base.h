@@ -43,8 +43,7 @@ class QuicServerSessionVisitor {
   virtual ~QuicServerSessionVisitor() {}
 
   virtual void OnConnectionClosed(QuicConnectionId connection_id,
-                                  QuicErrorCode error,
-                                  const std::string& error_details) = 0;
+                                  QuicErrorCode error) = 0;
   virtual void OnWriteBlocked(QuicBlockedWriterInterface* blocked_writer) = 0;
   // Called after the given connection is added to the time-wait list.
   virtual void OnConnectionAddedToTimeWaitList(QuicConnectionId connection_id) {
@@ -65,7 +64,6 @@ class QuicServerSessionBase : public QuicSpdySession {
 
   // Override the base class to notify the owner of the connection close.
   void OnConnectionClosed(QuicErrorCode error,
-                          const std::string& error_details,
                           ConnectionCloseSource source) override;
   void OnWriteBlocked() override;
 

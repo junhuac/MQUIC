@@ -53,8 +53,6 @@ class QuicClientSession : public QuicClientSessionBase {
   // than the number of round-trips needed for the handshake.
   int GetNumSentClientHellos() const;
 
-  int GetNumReceivedServerConfigUpdates() const;
-
   void set_respect_goaway(bool respect_goaway) {
     respect_goaway_ = respect_goaway;
   }

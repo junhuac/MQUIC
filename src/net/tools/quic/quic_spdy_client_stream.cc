@@ -50,18 +50,20 @@ void QuicSpdyClientStream::OnInitialHeadersComplete(bool fin,
   if (!SpdyUtils::ParseHeaders(decompressed_headers().data(),
                                decompressed_headers().length(),
                                &content_length_, &response_headers_)) {
-    DLOG(ERROR) << "Failed to parse headers: " << decompressed_headers();
     Reset(QUIC_BAD_APPLICATION_PAYLOAD);
     return;
   }
 
-  if (!ParseHeaderStatusCode(&response_headers_, &response_code_)) {
-    DLOG(ERROR) << "Received invalid response code: "
-                << response_headers_[":status"].as_string();
+  string status = response_headers_[":status"].as_string();
+  size_t end = status.find(" ");
+  if (end != string::npos) {
+    status.erase(end);
+  }
+  if (!StringToInt(status, &response_code_)) {
+    // Invalid response code.
     Reset(QUIC_BAD_APPLICATION_PAYLOAD);
     return;
   }
-
   MarkHeadersConsumed(decompressed_headers().length());
   DVLOG(1) << "headers complete for stream " << id();
 
@@ -82,8 +84,6 @@ void QuicSpdyClientStream::OnPromiseHeadersComplete(QuicStreamId promised_id,
   if (!SpdyUtils::ParseHeaders(decompressed_headers().data(),
                                decompressed_headers().length(), &content_length,
                                &promise_headers)) {
-    DLOG(ERROR) << "Failed to parse promise headers: "
-                << decompressed_headers();
     Reset(QUIC_BAD_APPLICATION_PAYLOAD);
     return;
   }
@@ -112,8 +112,6 @@ void QuicSpdyClientStream::OnDataAvailable() {
 
     if (content_length_ >= 0 &&
         data_.size() > static_cast<uint64_t>(content_length_)) {
-      DLOG(ERROR) << "Invalid content length (" << content_length_
-                  << ") with data of size " << data_.size();
       Reset(QUIC_BAD_APPLICATION_PAYLOAD);
       return;
     }

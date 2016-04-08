@@ -48,13 +48,6 @@ const char kNotePublicDtor[] =
 const char kNoteProtectedNonVirtualDtor[] =
     "[chromium-style] Protected non-virtual destructor declared here";
 
-bool TypeHasNonTrivialDtor(const Type* type) {
-  if (const CXXRecordDecl* cxx_r = type->getAsCXXRecordDecl())
-    return !cxx_r->hasTrivialDestructor();
-
-  return false;
-}
-
 // Returns the underlying Type for |type| by expanding typedefs and removing
 // any namespace qualifiers. This is similar to desugaring, except that for
 // ElaboratedTypes, desugar will unwrap too much.
@@ -230,6 +223,14 @@ void FindBadConstructsConsumer::CheckCtorDtorWeight(
   if (record->getIdentifier() == NULL)
     return;
 
+  // We don't handle unions.
+  if (record->isUnion())
+    return;
+
+  // Skip records that derive from ignored base classes.
+  if (HasIgnoredBases(record))
+    return;
+
   // Count the number of templated base classes as a feature of whether the
   // destructor can be inlined.
   int templated_base_classes = 0;
@@ -288,7 +289,7 @@ void FindBadConstructsConsumer::CheckCtorDtorWeight(
         // The current check is buggy. An implicit copy constructor does not
         // have an inline body, so this check never fires for classes with a
         // user-declared out-of-line constructor.
-        if (it->hasInlineBody()) {
+        if (it->hasInlineBody() && options_.check_implicit_copy_ctors) {
           if (it->isCopyConstructor() &&
               !record->hasUserDeclaredCopyConstructor()) {
             // In general, implicit constructors are generated on demand.  But
@@ -560,12 +561,17 @@ void FindBadConstructsConsumer::CountType(const Type* type,
                                           int* templated_non_trivial_member) {
   switch (type->getTypeClass()) {
     case Type::Record: {
+      auto* record_decl = type->getAsCXXRecordDecl();
       // Simplifying; the whole class isn't trivial if the dtor is, but
       // we use this as a signal about complexity.
-      if (TypeHasNonTrivialDtor(type))
-        (*non_trivial_member)++;
-      else
+      // Note that if a record doesn't have a definition, it doesn't matter how
+      // it's counted, since the translation unit will fail to build. In that
+      // case, just count it as a trivial member to avoid emitting warnings that
+      // might be spurious.
+      if (!record_decl->hasDefinition() || record_decl->hasTrivialDestructor())
         (*trivial_member)++;
+      else
+        (*non_trivial_member)++;
       break;
     }
     case Type::TemplateSpecialization: {

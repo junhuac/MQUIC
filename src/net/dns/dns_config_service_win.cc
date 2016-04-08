@@ -34,6 +34,8 @@
 #include "net/dns/serial_worker.h"
 #include "url/url_canon.h"
 
+#pragma comment(lib, "iphlpapi.lib")
+
 namespace net {
 
 namespace internal {

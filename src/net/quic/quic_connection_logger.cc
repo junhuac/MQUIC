@@ -665,7 +665,6 @@ void QuicConnectionLogger::OnCryptoHandshakeMessageSent(
 }
 
 void QuicConnectionLogger::OnConnectionClosed(QuicErrorCode error,
-                                              const string& error_details,
                                               ConnectionCloseSource source) {
   net_log_.AddEvent(
       NetLog::TYPE_QUIC_SESSION_CLOSED,

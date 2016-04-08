@@ -1,0 +1,67 @@
+{
+  "Chromium Mojo Android": {
+    "additional_compile_targets": [
+      "mash:all"
+    ],
+    "scripts": [
+      {
+        "name": "mojo_apptests",
+        "script": "mojo_apptests.py"
+      }
+    ]
+  },
+  "Chromium Mojo Linux": {
+    "additional_compile_targets": [
+      "mash:all"
+    ],
+    "gtest_tests": [
+      {
+        "override_compile_targets": [
+          "mash_browser_tests"
+        ],
+        "swarming": {
+          "can_use_on_swarming_builders": true
+        },
+        "test": "mash_browser_tests"
+      },
+      {
+        "test": "mus_ws_unittests"
+      },
+      {
+        "test": "views_mus_unittests"
+      }
+    ],
+    "scripts": [
+      {
+        "name": "mojo_apptests",
+        "script": "mojo_apptests.py"
+      }
+    ]
+  },
+  "Chromium Mojo Windows": {
+    "additional_compile_targets": [
+      "mash:all"
+    ],
+    "gtest_tests": [
+      {
+        "args": [
+          "--run-in-mash",
+          "--test-launcher-filter-file=src/testing/buildbot/filters/mojo.fyi.browser_tests.filter"
+        ],
+        "test": "browser_tests"
+      },
+      {
+        "test": "mus_ws_unittests"
+      },
+      {
+        "test": "views_mus_unittests"
+      }
+    ],
+    "scripts": [
+      {
+        "name": "mojo_apptests",
+        "script": "mojo_apptests.py"
+      }
+    ]
+  }
+}

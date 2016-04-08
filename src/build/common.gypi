@@ -2275,7 +2275,7 @@
         'use_sanitizer_options%': 1,
       }],
       ['OS=="linux" and asan==0 and msan==0 and lsan==0 and tsan==0 and build_for_tool==""', {
-        'use_experimental_allocator_shim%': 0,  # segfaults proto-quic
+        'use_experimental_allocator_shim%': 1,
       }],
       ['OS=="linux" and asan==0 and msan==0 and lsan==0 and tsan==0', {
         # PNaCl toolchain Non-SFI build only supports linux OS build.
@@ -2323,14 +2323,6 @@
                               '-fno-builtin -fno-optimize-sibling-calls',
         'release_extra_cflags': '-g -fno-inline -fno-omit-frame-pointer '
                                 '-fno-builtin -fno-optimize-sibling-calls',
-
-        # MSVS flags for TSan on Pin and Windows.
-        'win_debug_RuntimeChecks': '0',
-        'win_debug_disable_iterator_debugging': '1',
-        'win_debug_Optimization': '1',
-        'win_debug_InlineFunctionExpansion': '0',
-        'win_release_InlineFunctionExpansion': '0',
-        'win_release_OmitFramePointers': '0',
 
         'release_valgrind_build': 1,
         'werror': '',
@@ -2458,12 +2450,11 @@
         ],
       }],
 
-      ['OS=="win" and clang==1', {
+      ['OS=="win" and clang==1 and asan==0', {
         # TODO(thakis): Remove this again once building with clang/win and
         # debug info doesn't make link.exe run for hours.
         'fastbuild': 1,
       }],
-
 
       ['host_clang==1', {
         'host_cc': '<(make_clang_dir)/bin/clang',
@@ -5071,6 +5062,7 @@
           # GCC_INLINES_ARE_PRIVATE_EXTERN maps to -fvisibility-inlines-hidden
           'GCC_INLINES_ARE_PRIVATE_EXTERN': 'YES',
           'GCC_OBJC_CALL_CXX_CDTORS': 'YES',        # -fobjc-call-cxx-cdtors
+          'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',      # -fvisibility=hidden
           'GCC_THREADSAFE_STATICS': 'NO',           # -fno-threadsafe-statics
           'GCC_TREAT_WARNINGS_AS_ERRORS': 'YES',    # -Werror
           'GCC_VERSION': 'com.apple.compilers.llvm.clang.1_0',
@@ -5158,29 +5150,6 @@
                 ],
               }],
             ],
-          }],
-          ['OS=="mac"', {
-            'xcode_settings': {
-              'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',    # -fvisibility=hidden
-            },
-          }],
-          ['OS=="ios"', {
-            'configurations': {
-              'Debug': {
-                'xcode_settings': {
-                  # XCTests inject a dynamic library into the application. If
-                  # fvisibility is set to hidden, then some symbols needed by
-                  # XCTests are not available. Disable this setting for
-                  # Debug configuration.
-                  'GCC_SYMBOLS_PRIVATE_EXTERN': 'NO',
-                },
-              },
-              'Release': {
-                'xcode_settings': {
-                  'GCC_SYMBOLS_PRIVATE_EXTERN': 'YES',    # -fvisibility=hidden
-                },
-              },
-            },
           }],
         ],
         'target_conditions': [
@@ -5583,88 +5552,92 @@
         ],
         'conditions': [
           ['buildtype=="Official"', {
-              # In official builds, targets can self-select an optimization
-              # level by defining a variable named 'optimize', and setting it
-              # to one of
-              # - "size", optimizes for minimal code size - the default.
-              # - "speed", optimizes for speed over code size.
-              # - "max", whole program optimization and link-time code
-              #   generation. This is very expensive and should be used
-              #   sparingly.
-              'variables': {
-                'optimize%': 'size',
+            # In official builds, targets can self-select an optimization
+            # level by defining a variable named 'optimize', and setting it
+            # to one of
+            # - "size", optimizes for minimal code size - the default.
+            # - "speed", optimizes for speed over code size.
+            # - "max", whole program optimization and link-time code
+            #   generation. This is very expensive and should be used
+            #   sparingly.
+            'variables': {
+              'optimize%': 'size',
+            },
+            'msvs_settings': {
+              'VCLinkerTool': {
+                # Set /LTCG for the official builds.
+                'LinkTimeCodeGeneration': '1',
+                'AdditionalOptions': [
+                  # Set the number of LTCG code-gen threads to eight.
+                  # The default is four. This gives a 5-10% link speedup.
+                  '/cgthreads:8',
+                ],
               },
-              'msvs_settings': {
-                'VCLinkerTool': {
-                  # Set /LTCG for the official builds.
-                  'LinkTimeCodeGeneration': '1',
-                  'AdditionalOptions': [
-                    # Set the number of LTCG code-gen threads to eight.
-                    # The default is four. This gives a 5-10% link speedup.
-                    '/cgthreads:8',
-                  ],
+            },
+            'target_conditions': [
+              ['optimize=="size"', {
+                'msvs_settings': {
+                  'VCCLCompilerTool': {
+                    # 1, optimizeMinSpace, Minimize Size (/O1)
+                    'Optimization': '1',
+                    # 2, favorSize - Favor small code (/Os)
+                    'FavorSizeOrSpeed': '2',
+                  },
                 },
-              },
-              'target_conditions': [
-                ['optimize=="size"', {
-                    'msvs_settings': {
-                      'VCCLCompilerTool': {
-                        # 1, optimizeMinSpace, Minimize Size (/O1)
-                        'Optimization': '1',
-                        # 2, favorSize - Favor small code (/Os)
-                        'FavorSizeOrSpeed': '2',
-                      },
-                    },
+              }],
+              # This config is used to avoid a problem in ffmpeg, see
+              # http://crbug.com/264459.
+              ['optimize=="size_no_ltcg"', {
+                'msvs_settings': {
+                  'VCCLCompilerTool': {
+                    # 1, optimizeMinSpace, Minimize Size (/O1)
+                    'Optimization': '1',
+                    # 2, favorSize - Favor small code (/Os)
+                    'FavorSizeOrSpeed': '2',
                   },
-                ],
-                # This config is used to avoid a problem in ffmpeg, see
-                # http://crbug.com/264459.
-                ['optimize=="size_no_ltcg"', {
-                    'msvs_settings': {
-                      'VCCLCompilerTool': {
-                        # 1, optimizeMinSpace, Minimize Size (/O1)
-                        'Optimization': '1',
-                        # 2, favorSize - Favor small code (/Os)
-                        'FavorSizeOrSpeed': '2',
-                      },
-                    },
+                },
+              }],
+              ['optimize=="speed"', {
+                'msvs_settings': {
+                  'VCCLCompilerTool': {
+                    # 2, optimizeMaxSpeed, Maximize Speed (/O2)
+                    'Optimization': '2',
+                    # 1, favorSpeed - Favor fast code (/Ot)
+                    'FavorSizeOrSpeed': '1',
                   },
+                },
+              }],
+              ['optimize=="max"', {
+                # Disable Warning 4702 ("Unreachable code") for the WPO/PGO
+                # builds. Probably anything that this would catch that
+                # wouldn't be caught in a normal build isn't going to
+                # actually be a bug, so the incremental value of C4702 for
+                # PGO builds is likely very small.
+                'msvs_disabled_warnings': [
+                  4702
                 ],
-                ['optimize=="speed"', {
-                    'msvs_settings': {
-                      'VCCLCompilerTool': {
-                        # 2, optimizeMaxSpeed, Maximize Speed (/O2)
-                        'Optimization': '2',
-                        # 1, favorSpeed - Favor fast code (/Ot)
-                        'FavorSizeOrSpeed': '1',
-                      },
-                    },
+                'msvs_settings': {
+                  'VCCLCompilerTool': {
+                    # 2, optimizeMaxSpeed, Maximize Speed (/O2)
+                    'Optimization': '2',
+                    # 1, favorSpeed - Favor fast code (/Ot)
+                    'FavorSizeOrSpeed': '1',
                   },
-                ],
-                ['optimize=="max"', {
-                    # Disable Warning 4702 ("Unreachable code") for the WPO/PGO
-                    # builds. Probably anything that this would catch that
-                    # wouldn't be caught in a normal build isn't going to
-                    # actually be a bug, so the incremental value of C4702 for
-                    # PGO builds is likely very small.
-                    'msvs_disabled_warnings': [
-                      4702
-                    ],
+                },
+                # TODO(thakis): Remove clang==0 here, https://crbug.com/598772
+                'conditions': [
+                  ['clang==0', {
                     'msvs_settings': {
                       'VCCLCompilerTool': {
-                        # 2, optimizeMaxSpeed, Maximize Speed (/O2)
-                        'Optimization': '2',
-                        # 1, favorSpeed - Favor fast code (/Ot)
-                        'FavorSizeOrSpeed': '1',
                         # This implies link time code generation.
                         'WholeProgramOptimization': 'true',
                       },
                     },
-                  },
+                  }],
                 ],
-              ],
-            },
-          ],
+              }],
+            ],
+          }],
           ['msvs_xtree_patched!=1', {
             # If xtree hasn't been patched, then we disable C4702. Otherwise,
             # it's enabled. This will generally only be true for system-level
@@ -5769,7 +5742,6 @@
           'VCCLCompilerTool': {
             'AdditionalOptions': ['/MP'],
             'MinimalRebuild': 'false',
-            'BufferSecurityCheck': 'true',
             'EnableFunctionLevelLinking': 'true',
             'RuntimeTypeInfo': 'false',
             'WarningLevel': '4',
@@ -5842,6 +5814,14 @@
             }],
           ],
           'conditions': [
+            ['clang==0', {
+              'VCCLCompilerTool': {
+                 # TODO(thakis): Enable this with clang too,
+                 # https://crbug.com/598767
+                 'BufferSecurityCheck': 'true',
+              },
+            }],
+
             # Building with Clang on Windows is a work in progress and very
             # experimental. See crbug.com/82385.
             # Keep this in sync with the similar blocks in build/config/compiler/BUILD.gn
@@ -5860,7 +5840,6 @@
                   '/FIIntrin.h',
 
                   # TODO(hans): Make this list shorter eventually, http://crbug.com/504657
-                  '-Qunused-arguments',  # http://crbug.com/504658
                   '-Wno-microsoft-enum-value',  # http://crbug.com/505296
                   '-Wno-unknown-pragmas',  # http://crbug.com/505314
                   '-Wno-microsoft-cast',  # http://crbug.com/550065
@@ -5948,6 +5927,8 @@
                     'AdditionalOptions': [
                       '-fsanitize=address',
                       '-fsanitize-blacklist=<(PRODUCT_DIR)/../../tools/memory/asan/blacklist_win.txt',
+		      # Omit variable info to speed up /Z7 links.
+		      '-gline-tables-only',
                     ],
                     'AdditionalIncludeDirectories': [
                       # MSVC needs to be able to find the sanitizer headers when

@@ -24,6 +24,8 @@
 #include <blapi.h>
 #endif
 
+#pragma comment(lib, "crypt32.lib")
+
 using base::Time;
 
 namespace net {

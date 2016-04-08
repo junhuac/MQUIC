@@ -31,6 +31,9 @@
 #include "base/win/startup_information.h"
 #include "base/win/windows_version.h"
 
+// userenv.dll is required for CreateEnvironmentBlock().
+#pragma comment(lib, "userenv.lib")
+
 namespace base {
 
 namespace {

@@ -239,9 +239,7 @@ class QuicHeadersStreamTest : public ::testing::TestWithParam<TestParams> {
     return versions;
   }
 
-  void TearDownLocalConnectionState() {
-    QuicConnectionPeer::TearDownLocalConnectionState(connection_);
-  }
+  void CloseConnection() { QuicConnectionPeer::CloseConnection(connection_); }
 
   QuicStreamId NextPromisedStreamId() { return next_promised_stream_id_ += 2; }
 
@@ -362,11 +360,11 @@ TEST_P(QuicHeadersStreamTest, ProcessPushPromise) {
     push_promise.set_header_block(headers_);
     frame.reset(framer_->SerializeFrame(push_promise));
     if (perspective() == Perspective::IS_SERVER) {
-      EXPECT_CALL(*connection_,
-                  CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                                  "PUSH_PROMISE not supported.", _))
-          .WillRepeatedly(InvokeWithoutArgs(
-              this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+      EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                    QUIC_INVALID_HEADERS_STREAM_DATA,
+                                    "PUSH_PROMISE not supported."))
+          .WillRepeatedly(
+              InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
     } else {
       EXPECT_CALL(session_, OnPromiseHeaders(stream_id, _))
           .WillRepeatedly(WithArgs<1>(
@@ -506,8 +504,8 @@ TEST_P(QuicHeadersStreamTest, ProcessLargeRawData) {
 
 TEST_P(QuicHeadersStreamTest, ProcessBadData) {
   const char kBadData[] = "blah blah blah";
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA, _, _))
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_INVALID_HEADERS_STREAM_DATA, _))
       .Times(::testing::AnyNumber());
   stream_frame_.frame_buffer = kBadData;
   stream_frame_.frame_length = strlen(kBadData);
@@ -517,10 +515,11 @@ TEST_P(QuicHeadersStreamTest, ProcessBadData) {
 TEST_P(QuicHeadersStreamTest, ProcessSpdyDataFrame) {
   SpdyDataIR data(2, "");
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
-  EXPECT_CALL(*connection_, CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                                            "SPDY DATA frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+  EXPECT_CALL(*connection_,
+              SendConnectionCloseWithDetails(QUIC_INVALID_HEADERS_STREAM_DATA,
+                                             "SPDY DATA frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);
@@ -530,10 +529,10 @@ TEST_P(QuicHeadersStreamTest, ProcessSpdyRstStreamFrame) {
   SpdyRstStreamIR data(2, RST_STREAM_PROTOCOL_ERROR);
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
   EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                              "SPDY RST_STREAM frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+              SendConnectionCloseWithDetails(QUIC_INVALID_HEADERS_STREAM_DATA,
+                                             "SPDY RST_STREAM frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);
@@ -543,10 +542,11 @@ TEST_P(QuicHeadersStreamTest, ProcessSpdySettingsFrame) {
   SpdySettingsIR data;
   data.AddSetting(SETTINGS_HEADER_TABLE_SIZE, true, true, 0);
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
-  EXPECT_CALL(*connection_, CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                                            "SPDY SETTINGS frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+  EXPECT_CALL(*connection_,
+              SendConnectionCloseWithDetails(QUIC_INVALID_HEADERS_STREAM_DATA,
+                                             "SPDY SETTINGS frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);
@@ -555,10 +555,11 @@ TEST_P(QuicHeadersStreamTest, ProcessSpdySettingsFrame) {
 TEST_P(QuicHeadersStreamTest, ProcessSpdyPingFrame) {
   SpdyPingIR data(1);
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
-  EXPECT_CALL(*connection_, CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                                            "SPDY PING frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+  EXPECT_CALL(*connection_,
+              SendConnectionCloseWithDetails(QUIC_INVALID_HEADERS_STREAM_DATA,
+                                             "SPDY PING frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);
@@ -567,10 +568,11 @@ TEST_P(QuicHeadersStreamTest, ProcessSpdyPingFrame) {
 TEST_P(QuicHeadersStreamTest, ProcessSpdyGoAwayFrame) {
   SpdyGoAwayIR data(1, GOAWAY_PROTOCOL_ERROR, "go away");
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
-  EXPECT_CALL(*connection_, CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                                            "SPDY GOAWAY frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+  EXPECT_CALL(*connection_,
+              SendConnectionCloseWithDetails(QUIC_INVALID_HEADERS_STREAM_DATA,
+                                             "SPDY GOAWAY frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);
@@ -579,11 +581,11 @@ TEST_P(QuicHeadersStreamTest, ProcessSpdyGoAwayFrame) {
 TEST_P(QuicHeadersStreamTest, ProcessSpdyWindowUpdateFrame) {
   SpdyWindowUpdateIR data(1, 1);
   scoped_ptr<SpdySerializedFrame> frame(framer_->SerializeFrame(data));
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_INVALID_HEADERS_STREAM_DATA,
-                              "SPDY WINDOW_UPDATE frame received.", _))
-      .WillOnce(InvokeWithoutArgs(
-          this, &QuicHeadersStreamTest::TearDownLocalConnectionState));
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_INVALID_HEADERS_STREAM_DATA,
+                                "SPDY WINDOW_UPDATE frame received."))
+      .WillOnce(
+          InvokeWithoutArgs(this, &QuicHeadersStreamTest::CloseConnection));
   stream_frame_.frame_buffer = frame->data();
   stream_frame_.frame_length = frame->size();
   headers_stream_->OnStreamFrame(stream_frame_);

@@ -141,7 +141,8 @@ bool HistogramSamples::Serialize(Pickle* pickle) const {
   HistogramBase::Sample min;
   HistogramBase::Sample max;
   HistogramBase::Count count;
-  for (std::unique_ptr<SampleCountIterator> it = Iterator(); !it->Done();
+  for (scoped_ptr<SampleCountIterator> it = Iterator();
+       !it->Done();
        it->Next()) {
     it->Get(&min, &max, &count);
     if (!pickle->WriteInt(min) ||

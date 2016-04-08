@@ -5,7 +5,6 @@
 #ifndef NET_HTTP_HTTP_AUTH_PREFERENCES_H_
 #define NET_HTTP_HTTP_AUTH_PREFERENCES_H_
 
-#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -77,7 +76,7 @@ class NET_EXPORT HttpAuthPreferences {
   // sorts of problems for, for example, active Negotiate transactions.
   const std::string gssapi_library_name_;
 #endif
-  std::unique_ptr<URLSecurityManager> security_manager_;
+  scoped_ptr<URLSecurityManager> security_manager_;
   DISALLOW_COPY_AND_ASSIGN(HttpAuthPreferences);
 };
 

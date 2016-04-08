@@ -14,8 +14,6 @@
 namespace base {
 namespace debug {
 
-StackTrace::StackTrace() { }
-
 StackTrace::StackTrace(const void* const* trace, size_t count) {
   count = std::min(count, arraysize(trace_));
   if (count)
@@ -26,8 +24,6 @@ StackTrace::StackTrace(const void* const* trace, size_t count) {
 StackTrace::~StackTrace() {
 }
 
-void StackTrace::OutputToStream(std::ostream* os) const { }
-
 const void *const *StackTrace::Addresses(size_t* count) const {
   *count = count_;
   if (count_)
@@ -37,10 +33,8 @@ const void *const *StackTrace::Addresses(size_t* count) const {
 
 std::string StackTrace::ToString() const {
   std::stringstream stream;
-#if 0
 #if !defined(__UCLIBC__)
   OutputToStream(&stream);
-#endif
 #endif
   return stream.str();
 }

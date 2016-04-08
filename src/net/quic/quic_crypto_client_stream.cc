@@ -118,8 +118,7 @@ QuicCryptoClientStream::QuicCryptoClientStream(
       verify_context_(verify_context),
       proof_verify_callback_(nullptr),
       proof_handler_(proof_handler),
-      stateless_reject_received_(false),
-      num_scup_messages_received_(0) {
+      stateless_reject_received_(false) {
   DCHECK_EQ(Perspective::IS_CLIENT, session->connection()->perspective());
 }
 
@@ -146,7 +145,6 @@ void QuicCryptoClientStream::OnHandshakeMessage(
     // |message| is an update from the server, so we treat it differently from a
     // handshake message.
     HandleServerConfigUpdateMessage(message);
-    num_scup_messages_received_++;
     return;
   }
 
@@ -167,10 +165,6 @@ void QuicCryptoClientStream::CryptoConnect() {
 
 int QuicCryptoClientStream::num_sent_client_hellos() const {
   return num_client_hellos_;
-}
-
-int QuicCryptoClientStream::num_scup_messages_received() const {
-  return num_scup_messages_received_;
 }
 
 // Used in Chromium, but not in the server.
@@ -285,8 +279,8 @@ void QuicCryptoClientStream::DoSendCHLO(
     next_state_ = STATE_NONE;
     if (session()->connection()->connected()) {
       session()->connection()->CloseConnection(
-          QUIC_CRYPTO_HANDSHAKE_STATELESS_REJECT, "stateless reject received",
-          ConnectionCloseBehavior::SILENT_CLOSE);
+          QUIC_CRYPTO_HANDSHAKE_STATELESS_REJECT,
+          ConnectionCloseSource::FROM_SELF);
     }
     return;
   }
@@ -477,7 +471,7 @@ QuicAsyncStatus QuicCryptoClientStream::DoVerifyProof(
   verify_ok_ = false;
 
   QuicAsyncStatus status = verifier->VerifyProof(
-      server_id_.host(), server_id_.port(), cached->server_config(),
+      server_id_.host(), cached->server_config(),
       session()->connection()->version(), chlo_hash_, cached->certs(),
       cached->cert_sct(), cached->signature(), verify_context_.get(),
       &verify_error_details_, &verify_details_, proof_verify_callback);

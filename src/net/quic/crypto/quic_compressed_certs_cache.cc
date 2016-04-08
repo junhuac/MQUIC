@@ -4,8 +4,6 @@
 
 #include "net/quic/crypto/quic_compressed_certs_cache.h"
 
-using std::string;
-
 namespace net {
 
 namespace {

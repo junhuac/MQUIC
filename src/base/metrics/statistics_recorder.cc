@@ -4,12 +4,11 @@
 
 #include "base/metrics/statistics_recorder.h"
 
-#include <memory>
-
 #include "base/at_exit.h"
 #include "base/debug/leak_annotations.h"
 #include "base/json/string_escape.h"
 #include "base/logging.h"
+#include "base/memory/scoped_ptr.h"
 #include "base/metrics/histogram.h"
 #include "base/metrics/metrics_hashes.h"
 #include "base/stl_util.h"
@@ -148,7 +147,7 @@ HistogramBase* StatisticsRecorder::RegisterOrDeleteDuplicate(
 const BucketRanges* StatisticsRecorder::RegisterOrDeleteDuplicateRanges(
     const BucketRanges* ranges) {
   DCHECK(ranges->HasValidChecksum());
-  std::unique_ptr<const BucketRanges> ranges_deleter;
+  scoped_ptr<const BucketRanges> ranges_deleter;
 
   if (lock_ == NULL) {
     ANNOTATE_LEAKING_OBJECT_PTR(ranges);
@@ -430,9 +429,9 @@ void StatisticsRecorder::Reset() {
   if (!lock_)
     return;
 
-  std::unique_ptr<HistogramMap> histograms_deleter;
-  std::unique_ptr<CallbackMap> callbacks_deleter;
-  std::unique_ptr<RangesMap> ranges_deleter;
+  scoped_ptr<HistogramMap> histograms_deleter;
+  scoped_ptr<CallbackMap> callbacks_deleter;
+  scoped_ptr<RangesMap> ranges_deleter;
   // We don't delete lock_ on purpose to avoid having to properly protect
   // against it going away after we checked for NULL in the static methods.
   {

@@ -9,7 +9,6 @@
 
 using net::SpdyHeaderBlock;
 using net::kPushPromiseTimeoutSecs;
-using std::string;
 
 namespace net {
 

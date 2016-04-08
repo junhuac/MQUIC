@@ -7,7 +7,7 @@
 #include "build/build_config.h"
 #include "crypto/nss_util.h"
 #include "net/socket/client_socket_pool_base.h"
-//#include "net/socket/ssl_server_socket.h"
+#include "net/socket/ssl_server_socket.h"
 #include "net/spdy/spdy_session.h"
 #include "net/test/net_test_suite.h"
 
@@ -25,10 +25,10 @@
 #endif
 
 #if !defined(OS_ANDROID) && !defined(OS_IOS)
-//#include "mojo/edk/embedder/embedder.h"  // nogncheck
+#include "mojo/edk/embedder/embedder.h"  // nogncheck
 #endif
 
-//using net::internal::ClientSocketPoolBaseHelper;
+using net::internal::ClientSocketPoolBaseHelper;
 using net::SpdySession;
 
 int main(int argc, char** argv) {
@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
 #endif
 
   NetTestSuite test_suite(argc, argv);
-//  ClientSocketPoolBaseHelper::set_connect_backup_jobs_enabled(false);
+  ClientSocketPoolBaseHelper::set_connect_backup_jobs_enabled(false);
 
 #if defined(OS_WIN) && !defined(USE_OPENSSL)
   // We want to be sure to init NSPR on the main thread.
@@ -65,10 +65,10 @@ int main(int argc, char** argv) {
 
   // Enable support for SSL server sockets, which must be done while
   // single-threaded.
-//  net::EnableSSLServerSockets();
+  net::EnableSSLServerSockets();
 
 #if !defined(OS_ANDROID) && !defined(OS_IOS)
-//  mojo::edk::Init();
+  mojo::edk::Init();
 #endif
 
   return base::LaunchUnitTests(

@@ -321,9 +321,8 @@ void QuicStreamFactory::Job::RunAuxilaryJob() {
 void QuicStreamFactory::Job::Cancel() {
   callback_.Reset();
   if (session_)
-    session_->connection()->CloseConnection(
-        QUIC_CONNECTION_CANCELLED, "New job canceled.",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session_->connection()->SendConnectionCloseWithDetails(
+        QUIC_CONNECTION_CANCELLED, "New job canceled.");
 }
 
 void QuicStreamFactory::Job::CancelWaitForDataReadyCallback() {
@@ -490,9 +489,9 @@ int QuicStreamFactory::Job::DoConnectComplete(int rv) {
   // existing session instead.
   AddressList address(session_->connection()->peer_address());
   if (factory_->OnResolution(server_id_, address)) {
-    session_->connection()->CloseConnection(
-        QUIC_CONNECTION_IP_POOLED, "An active session exists for the given IP.",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session_->connection()->SendConnectionCloseWithDetails(
+        QUIC_CONNECTION_IP_POOLED,
+        "An active session exists for the given IP.");
     session_ = nullptr;
     return OK;
   }
@@ -1463,17 +1462,19 @@ int QuicStreamFactory::ConfigureSocket(DatagramClientSocket* socket,
 #endif
   }
 
+  // If caller leaves network unspecified, use current default.
   int rv;
   if (migrate_sessions_on_network_change_) {
-    // If caller leaves network unspecified, use current default network.
     if (network == NetworkChangeNotifier::kInvalidNetworkHandle) {
-      rv = socket->ConnectUsingDefaultNetwork(addr);
+      rv = socket->BindToDefaultNetwork();
     } else {
-      rv = socket->ConnectUsingNetwork(network, addr);
+      rv = socket->BindToNetwork(network);
     }
-  } else {
-    rv = socket->Connect(addr);
+    if (rv != OK)
+      return rv;
   }
+
+  rv = socket->Connect(addr);
   if (rv != OK) {
     HistogramCreateSessionFailure(CREATION_ERROR_CONNECTING_SOCKET);
     return rv;

@@ -11,6 +11,10 @@
 #include "base/process/process_handle.h"
 #include "build/build_config.h"
 
+#if defined(OS_WIN)
+#include <windows.h>
+#endif
+
 #ifdef PVALLOC_AVAILABLE
 // Build config explicitly tells us whether or not pvalloc is available.
 #elif defined(LIBC_GLIBC) && !defined(USE_TCMALLOC)
@@ -31,6 +35,12 @@ BASE_EXPORT void EnableTerminationOnOutOfMemory();
 // Terminates process. Should be called only for out of memory errors.
 // Crash reporting classifies such crashes as OOM.
 BASE_EXPORT void TerminateBecauseOutOfMemory(size_t size);
+
+#if defined(OS_WIN)
+// Returns the module handle to which an address belongs. The reference count
+// of the module is not incremented.
+BASE_EXPORT HMODULE GetModuleFromAddress(void* address);
+#endif
 
 #if defined(OS_LINUX) || defined(OS_ANDROID)
 BASE_EXPORT extern size_t g_oom_size;

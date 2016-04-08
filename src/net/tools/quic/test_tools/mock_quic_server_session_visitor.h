@@ -15,11 +15,9 @@ namespace test {
 class MockQuicServerSessionVisitor : public QuicServerSessionVisitor {
  public:
   MockQuicServerSessionVisitor();
-  virtual ~MockQuicServerSessionVisitor() override;
-  MOCK_METHOD3(OnConnectionClosed,
-               void(QuicConnectionId connection_id,
-                    QuicErrorCode error,
-                    const std::string& error_details));
+  virtual ~MockQuicServerSessionVisitor();
+  MOCK_METHOD2(OnConnectionClosed,
+               void(QuicConnectionId connection_id, QuicErrorCode error));
   MOCK_METHOD1(OnWriteBlocked,
                void(QuicBlockedWriterInterface* blocked_writer));
   MOCK_METHOD1(OnConnectionAddedToTimeWaitList,

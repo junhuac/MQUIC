@@ -294,9 +294,12 @@ QuicServerConfigProtobuf* QuicCryptoServerConfig::GenerateConfig(
   } else {
     msg.SetTaglist(kKEXS, kC255, 0);
   }
-  if (FLAGS_quic_crypto_server_config_default_has_chacha20 &&
-      ChaCha20Poly1305Rfc7539Encrypter::IsSupported()) {
-    msg.SetTaglist(kAEAD, kAESG, kCC20, 0);
+  if (FLAGS_quic_crypto_server_config_default_has_chacha20) {
+    if (ChaCha20Poly1305Rfc7539Encrypter::IsSupported()) {
+      msg.SetTaglist(kAEAD, kAESG, kCC12, kCC20, 0);
+    } else {
+      msg.SetTaglist(kAEAD, kAESG, kCC12, 0);
+    }
   } else {
     msg.SetTaglist(kAEAD, kAESG, 0);
   }
@@ -777,7 +780,10 @@ QuicErrorCode QuicCryptoServerConfig::ProcessClientHello(
   hkdf_input.append(QuicCryptoConfig::kInitialLabel, label_len);
   hkdf_input.append(hkdf_suffix);
 
-  string* subkey_secret = &params->initial_subkey_secret;
+  string* subkey_secret = nullptr;
+  if (FLAGS_quic_save_initial_subkey_secret) {
+    subkey_secret = &params->initial_subkey_secret;
+  }
   if (!CryptoUtils::DeriveKeys(params->initial_premaster_secret, params->aead,
                                info.client_nonce, info.server_nonce, hkdf_input,
                                Perspective::IS_SERVER,

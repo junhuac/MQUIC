@@ -4,6 +4,9 @@
 
 #include "net/quic/crypto/quic_compressed_certs_cache.h"
 
+#include <string>
+#include <vector>
+
 #include "base/logging.h"
 #include "base/macros.h"
 #include "base/strings/string_number_conversions.h"
@@ -11,7 +14,6 @@
 #include "net/quic/test_tools/crypto_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
-using std::string;
 using std::vector;
 
 namespace net {

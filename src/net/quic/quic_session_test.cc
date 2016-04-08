@@ -128,9 +128,8 @@ class TestSession : public QuicSpdySession {
   TestStream* CreateIncomingDynamicStream(QuicStreamId id) override {
     // Enforce the limit on the number of open streams.
     if (GetNumOpenIncomingStreams() + 1 > max_open_incoming_streams()) {
-      connection()->CloseConnection(
-          QUIC_TOO_MANY_OPEN_STREAMS, "Too many streams!",
-          ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+      connection()->SendConnectionCloseWithDetails(QUIC_TOO_MANY_OPEN_STREAMS,
+                                                   "Too many streams!");
       return nullptr;
     } else {
       TestStream* stream = new TestStream(id, this);
@@ -336,7 +335,7 @@ TEST_P(QuicSessionTestServer, IsClosedStreamPeerCreated) {
 TEST_P(QuicSessionTestServer, MaximumAvailableOpenedStreams) {
   QuicStreamId stream_id = kClientDataStreamId1;
   session_.GetOrCreateDynamicStream(stream_id);
-  EXPECT_CALL(*connection_, CloseConnection(_, _, _)).Times(0);
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(_, _)).Times(0);
   EXPECT_NE(nullptr,
             session_.GetOrCreateDynamicStream(
                 stream_id + 2 * (session_.max_open_incoming_streams() - 1)));
@@ -348,8 +347,8 @@ TEST_P(QuicSessionTestServer, TooManyAvailableStreams) {
   EXPECT_NE(nullptr, session_.GetOrCreateDynamicStream(stream_id1));
   // A stream ID which is too large to create.
   stream_id2 = stream_id1 + 2 * session_.MaxAvailableStreams() + 4;
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_TOO_MANY_AVAILABLE_STREAMS, _, _));
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_TOO_MANY_AVAILABLE_STREAMS, _));
   EXPECT_EQ(nullptr, session_.GetOrCreateDynamicStream(stream_id2));
 }
 
@@ -360,7 +359,7 @@ TEST_P(QuicSessionTestServer, ManyAvailableStreams) {
   QuicStreamId stream_id = kClientDataStreamId1;
   // Create one stream.
   session_.GetOrCreateDynamicStream(stream_id);
-  EXPECT_CALL(*connection_, CloseConnection(_, _, _)).Times(0);
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(_, _)).Times(0);
   // Create the largest stream ID of a threatened total of 200 streams.
   session_.GetOrCreateDynamicStream(stream_id + 2 * (200 - 1));
 }
@@ -976,8 +975,8 @@ TEST_P(QuicSessionTestServer, InvalidStreamFlowControlWindowInHandshake) {
   QuicConfigPeer::SetReceivedInitialStreamFlowControlWindow(session_.config(),
                                                             kInvalidWindow);
 
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_FLOW_CONTROL_INVALID_WINDOW, _, _));
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_FLOW_CONTROL_INVALID_WINDOW, _));
   session_.OnConfigNegotiated();
 }
 
@@ -988,8 +987,8 @@ TEST_P(QuicSessionTestServer, InvalidSessionFlowControlWindowInHandshake) {
   QuicConfigPeer::SetReceivedInitialSessionFlowControlWindow(session_.config(),
                                                              kInvalidWindow);
 
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_FLOW_CONTROL_INVALID_WINDOW, _, _));
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_FLOW_CONTROL_INVALID_WINDOW, _));
   session_.OnConfigNegotiated();
 }
 
@@ -997,8 +996,8 @@ TEST_P(QuicSessionTestServer, FlowControlWithInvalidFinalOffset) {
   // Test that if we receive a stream RST with a highest byte offset that
   // violates flow control, that we close the connection.
   const uint64_t kLargeOffset = kInitialSessionFlowControlWindowForTest + 1;
-  EXPECT_CALL(*connection_,
-              CloseConnection(QUIC_FLOW_CONTROL_RECEIVED_TOO_MUCH_DATA, _, _))
+  EXPECT_CALL(*connection_, SendConnectionCloseWithDetails(
+                                QUIC_FLOW_CONTROL_RECEIVED_TOO_MUCH_DATA, _))
       .Times(2);
 
   // Check that stream frame + FIN results in connection close.
@@ -1057,7 +1056,7 @@ TEST_P(QuicSessionTestServer, TooManyUnfinishedStreamsCauseServerRejectStream) {
 
   if (GetParam() <= QUIC_VERSION_27) {
     EXPECT_CALL(*connection_,
-                CloseConnection(QUIC_TOO_MANY_OPEN_STREAMS, _, _));
+                SendConnectionCloseWithDetails(QUIC_TOO_MANY_OPEN_STREAMS, _));
     EXPECT_CALL(*connection_, SendRstStream(kFinalStreamId, _, _)).Times(0);
   } else {
     EXPECT_CALL(*connection_,
@@ -1078,7 +1077,8 @@ TEST_P(QuicSessionTestServer, DrainingStreamsDoNotCountAsOpened) {
   // it) does not count against the open quota (because it is closed from the
   // protocol point of view).
   if (GetParam() <= QUIC_VERSION_27) {
-    EXPECT_CALL(*connection_, CloseConnection(QUIC_TOO_MANY_OPEN_STREAMS, _, _))
+    EXPECT_CALL(*connection_,
+                SendConnectionCloseWithDetails(QUIC_TOO_MANY_OPEN_STREAMS, _))
         .Times(0);
   } else {
     EXPECT_CALL(*connection_, SendRstStream(_, QUIC_REFUSED_STREAM, _))

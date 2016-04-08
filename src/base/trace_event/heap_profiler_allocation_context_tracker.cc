@@ -19,7 +19,6 @@ subtle::Atomic32 AllocationContextTracker::capture_enabled_ = 0;
 namespace {
 
 const size_t kMaxStackDepth = 128u;
-const size_t kMaxTaskDepth = 16u;
 AllocationContextTracker* const kInitializingSentinel =
     reinterpret_cast<AllocationContextTracker*>(-1);
 
@@ -50,18 +49,10 @@ AllocationContextTracker::GetInstanceForCurrentThread() {
   return tracker;
 }
 
-AllocationContextTracker::AllocationContextTracker() : thread_name_(nullptr) {
+AllocationContextTracker::AllocationContextTracker() {
   pseudo_stack_.reserve(kMaxStackDepth);
-  task_contexts_.reserve(kMaxTaskDepth);
 }
 AllocationContextTracker::~AllocationContextTracker() {}
-
-// static
-void AllocationContextTracker::SetCurrentThreadName(const char* name) {
-  if (name && capture_enabled()) {
-    GetInstanceForCurrentThread()->thread_name_ = name;
-  }
-}
 
 // static
 void AllocationContextTracker::SetCaptureEnabled(bool enabled) {
@@ -101,20 +92,6 @@ void AllocationContextTracker::PopPseudoStackFrame(StackFrame frame) {
   pseudo_stack_.pop_back();
 }
 
-void AllocationContextTracker::PushCurrentTaskContext(const char* context) {
-  DCHECK(context);
-  if (task_contexts_.size() < kMaxTaskDepth)
-    task_contexts_.push_back(context);
-  else
-    NOTREACHED();
-}
-
-void AllocationContextTracker::PopCurrentTaskContext(const char* context) {
-  DCHECK_EQ(context, task_contexts_.back())
-      << "Encountered an unmatched context end";
-  task_contexts_.pop_back();
-}
-
 // static
 AllocationContext AllocationContextTracker::GetContextSnapshot() {
   AllocationContext ctx;
@@ -126,13 +103,6 @@ AllocationContext AllocationContextTracker::GetContextSnapshot() {
     auto src_end = pseudo_stack_.end();
     auto dst_end = std::end(ctx.backtrace.frames);
 
-    // Add the thread name as the first enrty in the backtrace.
-    if (thread_name_) {
-      DCHECK(dst < dst_end);
-      *dst = thread_name_;
-      ++dst;
-    }
-
     // Copy as much of the bottom of the pseudo stack into the backtrace as
     // possible.
     for (; src != src_end && dst != dst_end; src++, dst++)
@@ -142,9 +112,7 @@ AllocationContext AllocationContextTracker::GetContextSnapshot() {
     std::fill(dst, dst_end, nullptr);
   }
 
-  // TODO(ssid): Fix crbug.com/594803 to add file name as 3rd dimension
-  // (component name) in the heap profiler and not piggy back on the type name.
-  ctx.type_name = task_contexts_.empty() ? nullptr : task_contexts_.back();
+  ctx.type_name = nullptr;
 
   return ctx;
 }

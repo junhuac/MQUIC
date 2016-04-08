@@ -289,8 +289,8 @@ QuicChromiumClientSession::~QuicChromiumClientSession() {
   if (connection()->connected()) {
     // Ensure that the connection is closed by the time the session is
     // destroyed.
-    connection()->CloseConnection(QUIC_INTERNAL_ERROR, "session torn down",
-                                  ConnectionCloseBehavior::SILENT_CLOSE);
+    connection()->CloseConnection(QUIC_INTERNAL_ERROR,
+                                  ConnectionCloseSource::FROM_SELF);
   }
 
   if (IsEncryptionEstablished())
@@ -671,9 +671,8 @@ bool QuicChromiumClientSession::ShouldCreateIncomingDynamicStream(
   }
   if (id % 2 != 0) {
     LOG(WARNING) << "Received invalid push stream id " << id;
-    connection()->CloseConnection(
-        QUIC_INVALID_STREAM_ID, "Server created odd numbered stream",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_STREAM_ID, "Server created odd numbered stream");
     return false;
   }
   return true;
@@ -812,10 +811,9 @@ void QuicChromiumClientSession::OnRstStream(const QuicRstStreamFrame& frame) {
 
 void QuicChromiumClientSession::OnConnectionClosed(
     QuicErrorCode error,
-    const std::string& error_details,
     ConnectionCloseSource source) {
   DCHECK(!connection()->connected());
-  logger_->OnConnectionClosed(error, error_details, source);
+  logger_->OnConnectionClosed(error, source);
   if (source == ConnectionCloseSource::FROM_PEER) {
     if (IsCryptoHandshakeConfirmed()) {
       UMA_HISTOGRAM_SPARSE_SLOWLY(
@@ -894,7 +892,7 @@ void QuicChromiumClientSession::OnConnectionClosed(
   UMA_HISTOGRAM_SPARSE_SLOWLY("Net.QuicSession.QuicVersion",
                               connection()->version());
   NotifyFactoryOfSessionGoingAway();
-  QuicSession::OnConnectionClosed(error, error_details, source);
+  QuicSession::OnConnectionClosed(error, source);
 
   if (!callback_.is_null()) {
     base::ResetAndReturn(&callback_).Run(ERR_QUIC_PROTOCOL_ERROR);
@@ -990,8 +988,7 @@ void QuicChromiumClientSession::CloseSessionOnErrorInner(
                     NetLog::IntCallback("net_error", net_error));
 
   if (connection()->connected())
-    connection()->CloseConnection(quic_error, "net error",
-                                  ConnectionCloseBehavior::SILENT_CLOSE);
+    connection()->CloseConnection(quic_error, ConnectionCloseSource::FROM_SELF);
   DCHECK(!connection()->connected());
 }
 

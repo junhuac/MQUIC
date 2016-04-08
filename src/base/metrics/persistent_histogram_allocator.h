@@ -5,14 +5,11 @@
 #ifndef BASE_METRICS_HISTOGRAM_PERSISTENCE_H_
 #define BASE_METRICS_HISTOGRAM_PERSISTENCE_H_
 
-#include <memory>
-
 #include "base/atomicops.h"
 #include "base/base_export.h"
 #include "base/feature_list.h"
-#if 0
+#include "base/memory/scoped_ptr.h"
 #include "base/memory/shared_memory.h"
-#endif
 #include "base/metrics/histogram_base.h"
 #include "base/metrics/persistent_memory_allocator.h"
 #include "base/strings/string_piece.h"
@@ -41,8 +38,7 @@ class BASE_EXPORT PersistentHistogramAllocator {
 
   // A PersistentHistogramAllocator is constructed from a PersistentMemory-
   // Allocator object of which it takes ownership.
-  PersistentHistogramAllocator(
-      std::unique_ptr<PersistentMemoryAllocator> memory);
+  PersistentHistogramAllocator(scoped_ptr<PersistentMemoryAllocator> memory);
   ~PersistentHistogramAllocator();
 
   // Direct access to underlying memory allocator. If the segment is shared
@@ -65,10 +61,10 @@ class BASE_EXPORT PersistentHistogramAllocator {
   // shared with all other threads referencing it. This method takes a |ref|
   // to where the top-level histogram data may be found in this allocator.
   // This method will return null if any problem is detected with the data.
-  std::unique_ptr<HistogramBase> GetHistogram(Reference ref);
+  scoped_ptr<HistogramBase> GetHistogram(Reference ref);
 
   // Get the next histogram in persistent data based on iterator.
-  std::unique_ptr<HistogramBase> GetNextHistogram(Iterator* iter) {
+  scoped_ptr<HistogramBase> GetNextHistogram(Iterator* iter) {
     return GetNextHistogramWithIgnore(iter, 0);
   }
 
@@ -77,7 +73,7 @@ class BASE_EXPORT PersistentHistogramAllocator {
 
   // Allocate a new persistent histogram. The returned histogram will not
   // be able to be located by other allocators until it is "finalized".
-  std::unique_ptr<HistogramBase> AllocateHistogram(
+  scoped_ptr<HistogramBase> AllocateHistogram(
       HistogramType histogram_type,
       const std::string& name,
       int minimum,
@@ -110,14 +106,14 @@ class BASE_EXPORT PersistentHistogramAllocator {
   // possible during startup to capture as many histograms as possible and
   // while operating single-threaded so there are no race-conditions.
   static void SetGlobalAllocator(
-      std::unique_ptr<PersistentHistogramAllocator> allocator);
+      scoped_ptr<PersistentHistogramAllocator> allocator);
   static PersistentHistogramAllocator* GetGlobalAllocator();
 
   // This access to the persistent allocator is only for testing; it extracts
   // the current allocator completely. This allows easy creation of histograms
   // within persistent memory segments which can then be extracted and used
   // in other ways.
-  static std::unique_ptr<PersistentHistogramAllocator>
+  static scoped_ptr<PersistentHistogramAllocator>
   ReleaseGlobalAllocatorForTesting();
 
   // These helper methods perform SetGlobalAllocator() calls with allocators
@@ -132,11 +128,9 @@ class BASE_EXPORT PersistentHistogramAllocator {
       size_t size,
       uint64_t id,
       StringPiece name);
-#if 0
   static void CreateGlobalAllocatorOnSharedMemory(
       size_t size,
       const SharedMemoryHandle& handle);
-#endif
 
   // Import new histograms from the global PersistentHistogramAllocator. It's
   // possible for other processes to create histograms in the active memory
@@ -192,18 +186,19 @@ class BASE_EXPORT PersistentHistogramAllocator {
 
   // Get the next histogram in persistent data based on iterator while
   // ignoring a particular reference if it is found.
-  std::unique_ptr<HistogramBase> GetNextHistogramWithIgnore(Iterator* iter,
-                                                            Reference ignore);
+  scoped_ptr<HistogramBase> GetNextHistogramWithIgnore(
+      Iterator* iter,
+      Reference ignore);
 
   // Create a histogram based on saved (persistent) information about it.
-  std::unique_ptr<HistogramBase> CreateHistogram(
+  scoped_ptr<HistogramBase> CreateHistogram(
       PersistentHistogramData* histogram_data_ptr);
 
   // Record the result of a histogram creation.
   static void RecordCreateHistogramResult(CreateHistogramResultType result);
 
   // The memory allocator that provides the actual histogram storage.
-  std::unique_ptr<PersistentMemoryAllocator> memory_allocator_;
+  scoped_ptr<PersistentMemoryAllocator> memory_allocator_;
 
   // A reference to the last-created histogram in the allocator, used to avoid
   // trying to import what was just created.

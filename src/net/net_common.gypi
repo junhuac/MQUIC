@@ -201,9 +201,9 @@
             ],
           }, {
             'dependencies': [
-#              '../third_party/nss/nss.gyp:nspr',
-#              '../third_party/nss/nss.gyp:nss',
-#              'third_party/nss/ssl.gyp:libssl',
+              '../third_party/nss/nss.gyp:nspr',
+              '../third_party/nss/nss.gyp:nss',
+              'third_party/nss/ssl.gyp:libssl',
             ],
           }]
         ],
@@ -300,13 +300,20 @@
     # file in directly.
     [ 'use_nss_certs == 1 and use_openssl == 1', {
         'sources': [
-#          'third_party/nss/ssl/cmpcert.c',
+          'third_party/nss/ssl/cmpcert.c',
         ],
     }],
     [ 'OS == "ios" and use_nss_verifier == 0', {
         'sources!': [
           'cert/x509_util_ios.cc',
           'cert/x509_util_ios.h',
+        ],
+    }],
+    [ 'OS == "ios" and use_nss_verifier == 1', {
+        'sources!': [
+          'cert/cert_verify_proc_ios.cc',
+          'cert/cert_verify_proc_ios.h',
+          'cert/x509_certificate_openssl_ios.cc',
         ],
     }],
     [ 'enable_websockets == 1', {
@@ -424,6 +431,11 @@
         ['include', '^base/platform_mime_util_mac\\.mm$'],
         ['include', '^proxy/proxy_resolver_mac\\.cc$'],
         ['include', '^proxy/proxy_server_mac\\.cc$'],
+      ],
+    }],
+    ['OS == "ios" and <(use_nss_verifier) == 0', {
+      'sources/': [
+        ['include', '^cert/test_root_certs_mac\\.cc$'],
       ],
     }],
   ],

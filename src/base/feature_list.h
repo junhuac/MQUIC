@@ -6,13 +6,13 @@
 #define BASE_FEATURE_LIST_H_
 
 #include <map>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "base/base_export.h"
 #include "base/gtest_prod_util.h"
 #include "base/macros.h"
+#include "base/memory/scoped_ptr.h"
 #include "base/strings/string_piece.h"
 #include "base/synchronization/lock.h"
 
@@ -145,13 +145,9 @@ class BASE_EXPORT FeatureList {
   static std::vector<std::string> SplitFeatureListString(
       const std::string& input);
 
-  // Initializes and sets an instance of FeatureList with feature overrides via
-  // command-line flags |enable_features| and |disable_features| if one has not
-  // already been set from command-line flags. Returns true if an instance did
-  // not previously exist. See InitializeFromCommandLine() for more details
-  // about |enable_features| and |disable_features| parameters.
-  static bool InitializeInstance(const std::string& enable_features,
-                                 const std::string& disable_features);
+  // Initializes and sets a default instance of FeatureList if one has not yet
+  // already been set. No-op otherwise.
+  static void InitializeInstance();
 
   // Returns the singleton instance of FeatureList. Will return null until an
   // instance is registered via SetInstance().
@@ -159,7 +155,7 @@ class BASE_EXPORT FeatureList {
 
   // Registers the given |instance| to be the singleton feature list for this
   // process. This should only be called once and |instance| must not be null.
-  static void SetInstance(std::unique_ptr<FeatureList> instance);
+  static void SetInstance(scoped_ptr<FeatureList> instance);
 
   // Clears the previously-registered singleton instance for tests.
   static void ClearInstanceForTesting();
@@ -238,9 +234,6 @@ class BASE_EXPORT FeatureList {
   // Whether this object has been fully initialized. This gets set to true as a
   // result of FinalizeInitialization().
   bool initialized_;
-
-  // Whether this object has been initialized from command line.
-  bool initialized_from_command_line_;
 
   DISALLOW_COPY_AND_ASSIGN(FeatureList);
 };

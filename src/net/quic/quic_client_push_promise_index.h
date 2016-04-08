@@ -5,9 +5,8 @@
 #ifndef NET_QUIC_QUIC_CLIENT_PUSH_PROMISE_INDEX_H_
 #define NET_QUIC_QUIC_CLIENT_PUSH_PROMISE_INDEX_H_
 
-#include <string>
-
 #include "net/quic/quic_client_session_base.h"
+
 #include "net/quic/quic_types.h"
 
 namespace net {
@@ -24,7 +23,7 @@ class NET_EXPORT_PRIVATE QuicClientPushPromiseIndex {
   // |Try()|.
   class NET_EXPORT_PRIVATE Delegate {
    public:
-    virtual ~Delegate() {}
+    virtual ~Delegate(){};
 
     // The primary lookup matched request with push promise by URL.  A
     // secondary match is necessary to ensure Vary (RFC 2616, 14.14)
@@ -64,7 +63,7 @@ class NET_EXPORT_PRIVATE QuicClientPushPromiseIndex {
 
   // Called by client code, used to enforce affinity between requests
   // for promised streams and the session the promise came from.
-  QuicClientPromisedInfo* GetPromised(const std::string& url);
+  QuicClientPromisedInfo* GetPromised(const string& url);
 
   // Called by client code, to initiate rendezvous between a request
   // and a server push stream.  If |request|'s url is in the index,

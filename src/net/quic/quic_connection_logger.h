@@ -70,7 +70,6 @@ class NET_EXPORT_PRIVATE QuicConnectionLogger
   void OnVersionNegotiationPacket(
       const QuicVersionNegotiationPacket& packet) override;
   void OnConnectionClosed(QuicErrorCode error,
-                          const std::string& error_details,
                           ConnectionCloseSource source) override;
   void OnSuccessfulVersionNegotiation(const QuicVersion& version) override;
   void OnRttChanged(QuicTime::Delta rtt) const override;

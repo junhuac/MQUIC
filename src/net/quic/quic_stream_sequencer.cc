@@ -6,7 +6,6 @@
 
 #include <algorithm>
 #include <limits>
-#include <string>
 #include <utility>
 
 #include "base/logging.h"

@@ -13,9 +13,8 @@
 #include "net/quic/spdy_utils.h"
 
 using base::StringPiece;
-using net::SpdyPriority;
 using std::min;
-using std::string;
+using net::SpdyPriority;
 
 namespace net {
 
@@ -202,9 +201,8 @@ void QuicSpdyStream::OnPromiseHeadersComplete(
     size_t /* frame_len */) {
   // To be overridden in QuicSpdyClientStream.  Not supported on
   // server side.
-  session()->connection()->CloseConnection(
-      QUIC_INVALID_HEADERS_STREAM_DATA, "Promise headers received by server",
-      ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+  session()->connection()->SendConnectionCloseWithDetails(
+      QUIC_INVALID_HEADERS_STREAM_DATA, "Promise headers received by server");
   return;
 }
 
@@ -212,16 +210,14 @@ void QuicSpdyStream::OnTrailingHeadersComplete(bool fin, size_t /*frame_len*/) {
   DCHECK(!trailers_decompressed_);
   if (fin_received()) {
     DLOG(ERROR) << "Received Trailers after FIN, on stream: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers after fin",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session()->connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers after fin");
     return;
   }
   if (!fin) {
     DLOG(ERROR) << "Trailers must have FIN set, on stream: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Fin missing from trailers",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session()->connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_HEADERS_STREAM_DATA, "Fin missing from trailers");
     return;
   }
 
@@ -231,9 +227,8 @@ void QuicSpdyStream::OnTrailingHeadersComplete(bool fin, size_t /*frame_len*/) {
                                 decompressed_trailers().length(),
                                 &final_byte_offset, &received_trailers_)) {
     DLOG(ERROR) << "Trailers are malformed: " << id();
-    session()->connection()->CloseConnection(
-        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers are malformed",
-        ConnectionCloseBehavior::SEND_CONNECTION_CLOSE_PACKET);
+    session()->connection()->SendConnectionCloseWithDetails(
+        QUIC_INVALID_HEADERS_STREAM_DATA, "Trailers are malformed");
     return;
   }
 
@@ -272,23 +267,6 @@ void QuicSpdyStream::OnClose() {
 
 bool QuicSpdyStream::FinishedReadingHeaders() const {
   return headers_decompressed_ && decompressed_headers_.empty();
-}
-
-bool QuicSpdyStream::ParseHeaderStatusCode(SpdyHeaderBlock* header,
-                                           int* status_code) const {
-  StringPiece status = (*header)[":status"];
-  if (status.size() != 3) {
-    return false;
-  }
-  // First character must be an integer in range [1,5].
-  if (status[0] < '1' || status[0] > '5') {
-    return false;
-  }
-  // The remaining two characters must be integers.
-  if (!isdigit(status[1]) || !isdigit(status[2])) {
-    return false;
-  }
-  return StringToInt(status, status_code);
 }
 
 bool QuicSpdyStream::FinishedReadingTrailers() const {

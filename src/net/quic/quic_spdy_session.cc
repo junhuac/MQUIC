@@ -7,8 +7,6 @@
 #include "net/quic/quic_bug_tracker.h"
 #include "net/quic/quic_headers_stream.h"
 
-using std::string;
-
 namespace net {
 
 QuicSpdySession::QuicSpdySession(QuicConnection* connection,
@@ -98,19 +96,17 @@ QuicSpdyStream* QuicSpdySession::GetSpdyDataStream(
 
 void QuicSpdySession::OnPromiseHeaders(QuicStreamId stream_id,
                                        StringPiece headers_data) {
-  string error = "OnPromiseHeaders should be overriden in client code.";
-  QUIC_BUG << error;
-  connection()->CloseConnection(QUIC_INTERNAL_ERROR, error,
-                                ConnectionCloseBehavior::SILENT_CLOSE);
+  QUIC_BUG << "OnPromiseHeaders should be overriden in client code.";
+  connection()->CloseConnection(QUIC_INTERNAL_ERROR,
+                                ConnectionCloseSource::FROM_SELF);
 }
 
 void QuicSpdySession::OnPromiseHeadersComplete(QuicStreamId stream_id,
                                                QuicStreamId promised_stream_id,
                                                size_t frame_len) {
-  string error = "OnPromiseHeadersComplete should be overriden in client code.";
-  QUIC_BUG << error;
-  connection()->CloseConnection(QUIC_INTERNAL_ERROR, error,
-                                ConnectionCloseBehavior::SILENT_CLOSE);
+  QUIC_BUG << "OnPromiseHeadersComplete shoule be overriden in client code.";
+  connection()->CloseConnection(QUIC_INTERNAL_ERROR,
+                                ConnectionCloseSource::FROM_SELF);
 }
 
 }  // namespace net
